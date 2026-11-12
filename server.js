@@ -6,579 +6,847 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Cryptographically Secure High-Entropy Token
-const SECURE_API_KEY = "nex_" + crypto.randomBytes(32).toString('hex');
-console.log(`[Security] Generated NexRelay Secure API Key: ${SECURE_API_KEY}`);
+// Cryptographically Secure High-Entropy Token for Inbound ServiceNow Rest Messages
+const SECURE_API_KEY = "sn_nex_" + crypto.randomBytes(32).toString('hex');
+console.log(`[Security] Generated ServiceNow Inbound Bearer Token: ${SECURE_API_KEY}`);
 
 app.use(cors());
 app.use(bodyParser.json());
 
-// In-memory stores (Cleared on server restart; frontend loads clean on page refresh)
 let inboundLogs = [];
 let outboundLogs = [];
 
-const activeConnectors = [
-    { id: 'c1', name: 'ServiceNow ITSM', category: 'ITSM', status: 'Active' },
-    { id: 'c2', name: 'Salesforce CRM', category: 'CRM', status: 'Active' },
-    { id: 'c3', name: 'Jira Software', category: 'Dev', status: 'Active' },
-    { id: 'c4', name: 'Workday HCM', category: 'HRMS', status: 'Active' },
-    { id: 'c5', name: 'Slack Enterprise', category: 'Communication', status: 'Active' },
-    { id: 'c6', name: 'Custom REST API', category: 'Custom', status: 'Ready' }
-];
-
-// 1. Inbound Event Endpoint (External System -> NexRelay)
-app.post('/api/v1/ingress/:connector', (req, res) => {
+// 1. ServiceNow Inbound REST Endpoint (ServiceNow Business Rule / REST Message -> Hub)
+app.post('/api/v1/servicenow/inbound', (req, res) => {
     const authHeader = req.headers['authorization'];
     
     if (!authHeader || authHeader !== `Bearer ${SECURE_API_KEY}`) {
-        console.warn(`[Unauthorized] Blocked ingestion attempt for ${req.params.connector}`);
-        return res.status(401).json({ status: 'Error', message: 'Unauthorized: Invalid or missing cryptographic token' });
+        return res.status(401).json({ 
+            status: 'Error', 
+            message: 'Unauthorized: Invalid or missing Bearer token' 
+        });
     }
 
-    const connector = req.params.connector;
-    const payload = req.body;
-    const syncId = "INB-" + Math.floor(100000 + Math.random() * 900000);
+    const syncId = "SN-INB-" + Math.floor(100000 + Math.random() * 900000);
     const timestamp = new Date().toLocaleTimeString();
 
     const inboundEntry = {
         id: syncId,
-        source: connector.toUpperCase(),
-        type: 'INBOUND',
-        timestamp: timestamp,
-        payload: payload
+        direction: 'INBOUND',
+        timestamp,
+        headers: {
+            'content-type': req.headers['content-type'],
+            'authorization': 'Bearer ********'
+        },
+        payload: req.body
     };
 
     inboundLogs.unshift(inboundEntry);
-    console.log(`[Inbound Recorded] Source: ${connector.toUpperCase()} | ID: ${syncId}`);
+    console.log(`[ServiceNow Inbound] ID: ${syncId}`);
 
     res.status(200).json({
         status: 'Success',
-        message: 'Inbound record created in NexRelay',
-        inbound: inboundEntry
+        message: 'Inbound ServiceNow payload received',
+        record: inboundEntry
     });
 });
 
-// 2. Outbound Dispatch Endpoint (NexRelay Form -> External Target System)
-app.post('/api/v1/egress/dispatch', async (req, res) => {
-    const authHeader = req.headers['authorization'];
-    
-    if (!authHeader || authHeader !== `Bearer ${SECURE_API_KEY}`) {
-        return res.status(401).json({ status: 'Error', message: 'Unauthorized: Invalid or missing cryptographic token' });
+// 2. Postman-Style Outbound HTTP Proxy (Hub -> ServiceNow Table API / Scripted REST API)
+app.post('/api/v1/servicenow/outbound', async (req, res) => {
+    const { method, url, authType, authValue, headers, body } = req.body;
+
+    if (!url || !method) {
+        return res.status(400).json({ status: 'Error', message: 'HTTP Method and ServiceNow Endpoint URL are required.' });
     }
 
-    const { targetSystem, targetUrl, recordTitle, customPayload } = req.body;
-
-    if (!targetSystem || !recordTitle) {
-        return res.status(400).json({ status: 'Error', message: 'Target System and Record Title are required.' });
-    }
-
-    const syncId = "OUT-" + Math.floor(100000 + Math.random() * 900000);
+    const syncId = "SN-OUT-" + Math.floor(100000 + Math.random() * 900000);
     const timestamp = new Date().toLocaleTimeString();
+    const startTime = Date.now();
 
-    let parsedPayload = {};
-    try {
-        parsedPayload = customPayload ? JSON.parse(customPayload) : { title: recordTitle };
-    } catch (e) {
-        parsedPayload = { title: recordTitle, rawNote: customPayload };
-    }
-
-    const dispatchEnvelope = {
-        relayTransactionId: syncId,
-        destinationSystem: targetSystem.toUpperCase(),
-        destinationEndpoint: targetUrl || `https://api.${targetSystem.toLowerCase()}.com/v2/records`,
-        recordTitle: recordTitle,
-        createdInRemoteSystem: true,
-        remoteRecordId: "EXT-" + Math.floor(10000 + Math.random() * 90000),
-        data: parsedPayload,
-        dispatchedAt: new Date().toISOString()
+    // Build Request Headers
+    const requestHeaders = {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
     };
 
-    // If a live external URL is provided, attempt real HTTP POST delivery
-    let deliveryStatus = 'Created in Target System (Simulated)';
-    if (targetUrl && targetUrl.startsWith('http')) {
+    if (headers && typeof headers === 'object') {
+        Object.entries(headers).forEach(([k, v]) => {
+            if (k && k.trim()) requestHeaders[k.trim()] = v;
+        });
+    }
+
+    if (authType === 'basic' && authValue) {
+        requestHeaders['Authorization'] = 'Basic ' + Buffer.from(authValue).toString('base64');
+    } else if (authType === 'bearer' && authValue) {
+        requestHeaders['Authorization'] = `Bearer ${authValue}`;
+    }
+
+    const fetchOptions = {
+        method: method.toUpperCase(),
+        headers: requestHeaders
+    };
+
+    if (['POST', 'PUT', 'PATCH'].includes(method.toUpperCase()) && body) {
+        fetchOptions.body = typeof body === 'string' ? body : JSON.stringify(body);
+    }
+
+    let responseStatus = 200;
+    let statusText = 'OK';
+    let responseData = null;
+    let durationMs = 0;
+
+    try {
+        const response = await fetch(url, fetchOptions);
+        durationMs = Date.now() - startTime;
+        responseStatus = response.status;
+        statusText = response.statusText;
+
+        const rawText = await response.text();
         try {
-            const extRes = await fetch(targetUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(dispatchEnvelope)
-            });
-            deliveryStatus = extRes.ok ? `Created in Target System (HTTP ${extRes.status})` : `Target Returned HTTP ${extRes.status}`;
-        } catch (err) {
-            deliveryStatus = `Dispatched (Remote Endpoint Unreachable: ${err.message})`;
+            responseData = JSON.parse(rawText);
+        } catch {
+            responseData = rawText || { message: 'No response body returned' };
         }
+    } catch (error) {
+        durationMs = Date.now() - startTime;
+        responseStatus = 502;
+        statusText = 'Connection Error';
+        responseData = {
+            error: error.message,
+            hint: 'Ensure your ServiceNow PDI is awake and the instance URL is reachable.'
+        };
     }
 
     const outboundEntry = {
         id: syncId,
-        destination: targetSystem.toUpperCase(),
-        type: 'OUTBOUND',
-        status: deliveryStatus,
-        timestamp: timestamp,
-        payload: dispatchEnvelope
+        direction: 'OUTBOUND',
+        method: method.toUpperCase(),
+        url,
+        status: `${responseStatus} ${statusText}`,
+        statusCode: responseStatus,
+        durationMs,
+        timestamp,
+        requestPayload: fetchOptions.body ? JSON.parse(fetchOptions.body) : null,
+        responsePayload: responseData
     };
 
     outboundLogs.unshift(outboundEntry);
-    console.log(`[Outbound Dispatched] Target: ${targetSystem.toUpperCase()} | ID: ${syncId}`);
+    console.log(`[ServiceNow Outbound] ${method.toUpperCase()} ${url} -> ${responseStatus} (${durationMs}ms)`);
 
     res.status(200).json({
-        status: 'Success',
-        message: 'Record created in target system',
-        outbound: outboundEntry
+        status: 'Completed',
+        record: outboundEntry
     });
 });
 
-app.get('/api/v1/connectors', (req, res) => res.json(activeConnectors));
-
-// 3. NexRelay Open Enterprise SaaS Dashboard Frontend
+// 3. Clean ServiceNow Integration Hub Frontend
 app.get('/', (req, res) => {
     res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>NexRelay | Enterprise Integration & Automation Platform</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NexRelay | ServiceNow Integration Hub</title>
     <style>
         :root {
-            --bg: #090d16;
-            --surface: #111827;
-            --surface-glass: rgba(17, 24, 39, 0.78);
-            --border: rgba(31, 41, 55, 0.9);
-            --accent: #3b82f6;
-            --accent-glow: rgba(59, 130, 246, 0.2);
-            --success: #10b981;
-            --text: #f3f4f6;
-            --text-dim: #9ca3af;
+            --bg: #070b12;
+            --surface: #0f1623;
+            --surface-elevated: #161f30;
+            --border: rgba(148, 163, 184, 0.14);
+            --sn-green: #62d84e;
+            --sn-green-glow: rgba(98, 216, 78, 0.18);
+            --accent: #38bdf8;
+            --danger: #f87171;
+            --warning: #fbbf24;
+            --text: #f1f5f9;
+            --text-dim: #94a3b8;
         }
         * { box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
             background: var(--bg);
             color: var(--text);
             margin: 0;
-            padding: 24px;
+            padding: 28px 20px;
             min-height: 100vh;
+            line-height: 1.5;
         }
-        .container { max-width: 1180px; margin: 0 auto; }
-        
+        .container { max-width: 1160px; margin: 0 auto; }
+
+        /* Smooth Entrance Animations */
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(14px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(98, 216, 78, 0.5); }
+            50% { box-shadow: 0 0 0 8px rgba(98, 216, 78, 0); }
+        }
+        @keyframes flowLine {
+            to { stroke-dashoffset: -24; }
+        }
+
         header {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            padding-bottom: 20px;
             border-bottom: 1px solid var(--border);
-            padding-bottom: 18px;
             margin-bottom: 24px;
+            animation: slideUp 0.45s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .logo-area h1 { margin: 0; font-size: 24px; font-weight: 700; color: #fff; letter-spacing: -0.5px; display: flex; align-items: center; gap: 8px; }
-        .logo-area h1 span { color: var(--accent); }
-        .tagline { color: var(--text-dim); font-size: 12px; margin-top: 4px; display: block; }
+        .brand h1 {
+            margin: 0;
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.4px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .brand h1 span { color: var(--sn-green); }
+        .brand p { margin: 4px 0 0 0; font-size: 12px; color: var(--text-dim); }
 
-        .status-pill {
-            background: rgba(16, 185, 129, 0.12);
-            border: 1px solid rgba(16, 185, 129, 0.35);
-            color: var(--success);
-            padding: 6px 14px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
+        .status-badge {
             display: flex;
             align-items: center;
             gap: 8px;
-        }
-        .pulse-dot { width: 8px; height: 8px; background: var(--success); border-radius: 50%; animation: pulse 2s infinite; }
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-            70% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
-        }
-
-        /* Connected Intelligence Flow Visualizer */
-        .network-canvas {
-            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            height: 120px;
-            display: flex;
-            align-items: center;
-            justify-content: space-around;
-            padding: 0 40px;
-            margin-bottom: 24px;
-            position: relative;
-            overflow: hidden;
-        }
-        .node {
-            background: #1e293b;
-            border: 1px solid var(--accent);
-            padding: 10px 18px;
-            border-radius: 8px;
+            background: rgba(98, 216, 78, 0.1);
+            border: 1px solid rgba(98, 216, 78, 0.3);
+            color: var(--sn-green);
+            padding: 6px 14px;
+            border-radius: 999px;
             font-size: 12px;
             font-weight: 600;
-            z-index: 2;
         }
-        .core-engine {
-            background: linear-gradient(135deg, var(--accent), #1d4ed8);
-            color: #fff;
-            padding: 12px 24px;
-            border-radius: 10px;
-            font-size: 14px;
-            font-weight: 700;
-            box-shadow: 0 0 25px rgba(59, 130, 246, 0.35);
-            z-index: 2;
-        }
-        .particle {
-            position: absolute;
-            width: 7px; height: 7px;
-            background: #60a5fa;
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--sn-green);
             border-radius: 50%;
-            box-shadow: 0 0 10px #60a5fa;
-            animation: travel 3.5s infinite linear;
-        }
-        @keyframes travel {
-            0% { left: 16%; opacity: 0; }
-            50% { opacity: 1; }
-            100% { left: 84%; opacity: 0; }
+            animation: pulseGlow 2.2s infinite;
         }
 
-        .metrics-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-        .metric-card {
-            background: var(--surface-glass);
+        /* Smooth Architecture Flow Banner */
+        .flow-banner {
+            background: linear-gradient(180deg, var(--surface) 0%, rgba(15, 22, 35, 0.6) 100%);
             border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 16px;
+            border-radius: 12px;
+            padding: 20px 32px;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            animation: slideUp 0.55s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .metric-title { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
-        .metric-value { font-size: 22px; font-weight: 700; color: #fff; margin-top: 6px; }
+        .flow-node {
+            background: var(--surface-elevated);
+            border: 1px solid var(--border);
+            padding: 12px 20px;
+            border-radius: 10px;
+            text-align: center;
+            min-width: 185px;
+            transition: transform 0.25s ease, border-color 0.25s ease;
+        }
+        .flow-node:hover {
+            transform: translateY(-2px);
+            border-color: var(--sn-green);
+        }
+        .flow-node strong { display: block; font-size: 13px; color: #fff; }
+        .flow-node span { font-size: 11px; color: var(--text-dim); }
+        .flow-node.hub {
+            border-color: rgba(98, 216, 78, 0.45);
+            box-shadow: 0 0 24px var(--sn-green-glow);
+        }
+        .flow-connector { flex: 1; display: flex; align-items: center; justify-content: center; padding: 0 12px; }
+        .flow-svg { width: 100%; height: 24px; }
+        .flow-path {
+            stroke: var(--sn-green);
+            stroke-width: 2;
+            stroke-dasharray: 6 6;
+            fill: none;
+            animation: flowLine 1.2s linear infinite;
+        }
 
-        .workspace-grid {
+        /* Workspace Layout */
+        .grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 380px 1fr;
             gap: 20px;
             margin-bottom: 28px;
+            animation: slideUp 0.65s cubic-bezier(0.16, 1, 0.3, 1);
         }
         .card {
-            background: var(--surface-glass);
+            background: var(--surface);
             border: 1px solid var(--border);
-            border-radius: 10px;
+            border-radius: 12px;
             padding: 20px;
+            transition: border-color 0.25s ease;
         }
-        .card h3 { margin-top: 0; font-size: 15px; color: #fff; margin-bottom: 6px; }
-        .card p { font-size: 12px; color: var(--text-dim); margin-top: 0; margin-bottom: 16px; }
+        .card:hover { border-color: rgba(148, 163, 184, 0.28); }
+        .card h2 {
+            margin: 0 0 4px 0;
+            font-size: 15px;
+            font-weight: 600;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .card .sub { font-size: 12px; color: var(--text-dim); margin: 0 0 16px 0; }
 
-        label { font-size: 11px; color: var(--text-dim); display: block; margin-bottom: 5px; font-weight: 600; }
+        label {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            margin-bottom: 6px;
+        }
         input, select, textarea {
-            width: 100%; padding: 10px 12px; background: #0b0f19;
-            border: 1px solid var(--border); border-radius: 6px; color: var(--text);
-            margin-bottom: 12px; font-size: 13px; font-family: inherit;
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 9px 12px;
+            border-radius: 7px;
+            font-size: 13px;
+            margin-bottom: 14px;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
         }
-        textarea { font-family: ui-monospace, monospace; font-size: 12px; resize: vertical; }
-        input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: var(--sn-green);
+            box-shadow: 0 0 0 3px var(--sn-green-glow);
+        }
+        textarea {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 12px;
+            resize: vertical;
+        }
 
-        button.primary {
-            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-            color: #fff; border: none; padding: 11px 18px; border-radius: 6px;
-            font-weight: 600; font-size: 13px; cursor: pointer; width: 100%;
-            box-shadow: 0 4px 12px var(--accent-glow);
-            transition: all 0.2s ease;
+        /* Postman URL Bar */
+        .url-bar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 14px;
         }
-        button.primary:hover:not(:disabled) { transform: translateY(-1px); }
-        button.primary:disabled {
-            background: #1f2937;
-            color: #6b7280;
-            box-shadow: none;
+        .url-bar select {
+            width: 115px;
+            margin-bottom: 0;
+            font-weight: 700;
+            color: var(--sn-green);
+        }
+        .url-bar input {
+            flex: 1;
+            margin-bottom: 0;
+            font-family: ui-monospace, monospace;
+            font-size: 12px;
+        }
+        .url-bar button {
+            width: auto;
+            padding: 0 20px;
+            white-space: nowrap;
+        }
+
+        /* Postman Sub-tabs */
+        .pm-tabs {
+            display: flex;
+            gap: 16px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 14px;
+        }
+        .pm-tab {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            font-size: 12px;
+            font-weight: 600;
+            padding: 6px 2px 10px 2px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: color 0.2s ease, border-color 0.2s ease;
+        }
+        .pm-tab.active {
+            color: var(--sn-green);
+            border-bottom-color: var(--sn-green);
+        }
+        .pm-panel { display: none; }
+        .pm-panel.active { display: block; animation: slideUp 0.25s ease; }
+
+        .header-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 32px;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .header-row input { margin-bottom: 0; font-size: 12px; padding: 7px 10px; }
+        .icon-btn {
+            background: var(--surface-elevated);
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .icon-btn:hover { color: var(--danger); border-color: var(--danger); }
+
+        .btn-primary {
+            width: 100%;
+            background: var(--sn-green);
+            color: #051108;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 7px;
+            font-weight: 700;
+            font-size: 13px;
+            cursor: pointer;
+            transition: transform 0.2s ease, filter 0.2s ease;
+        }
+        .btn-primary:hover:not(:disabled) {
+            filter: brightness(1.08);
+            transform: translateY(-1px);
+        }
+        .btn-primary:disabled {
+            background: var(--surface-elevated);
+            color: var(--text-dim);
             cursor: not-allowed;
         }
 
-        button.outbound-btn {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-            color: #fff; border: none; padding: 11px 18px; border-radius: 6px;
-            font-weight: 600; font-size: 13px; cursor: pointer; width: 100%;
-            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+        /* Feed Tabs */
+        .feed-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 12px;
+            margin-bottom: 16px;
+        }
+        .feed-tabs { display: flex; gap: 8px; }
+        .feed-tab {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            padding: 7px 14px;
+            border-radius: 7px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
             transition: all 0.2s ease;
         }
-        button.outbound-btn:hover:not(:disabled) { transform: translateY(-1px); }
-
-        .tabs { display: flex; gap: 8px; margin-bottom: 18px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
-        .tab-btn {
-            background: transparent; border: 1px solid var(--border); color: var(--text-dim);
-            padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer;
+        .feed-tab.active {
+            background: rgba(98, 216, 78, 0.12);
+            border-color: var(--sn-green);
+            color: var(--sn-green);
         }
-        .tab-btn.active { background: rgba(59, 130, 246, 0.15); border-color: var(--accent); color: var(--accent); }
 
-        pre { background: #0b0f19; padding: 12px; border-radius: 6px; color: #60a5fa; font-size: 12px; overflow-x: auto; border: 1px solid var(--border); margin-bottom: 0; }
-        .badge { background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: var(--accent); padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
-        .badge-out { background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); color: var(--success); padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
-        .time { color: var(--text-dim); font-size: 11px; float: right; }
-        .empty { text-align: center; color: var(--text-dim); padding: 40px; font-style: italic; font-size: 13px; background: var(--surface-glass); border: 1px solid var(--border); border-radius: 10px; }
-        @media (max-width: 850px) {
-            .workspace-grid, .metrics-grid { grid-template-columns: 1fr; }
+        .log-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 12px;
+            animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .log-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            font-size: 12px;
+        }
+        .badge {
+            padding: 3px 8px;
+            border-radius: 5px;
+            font-weight: 700;
+            font-size: 11px;
+            background: rgba(56, 189, 248, 0.15);
+            color: var(--accent);
+        }
+        .badge-ok { background: rgba(98, 216, 78, 0.15); color: var(--sn-green); }
+        .badge-err { background: rgba(248, 113, 113, 0.15); color: var(--danger); }
+
+        pre {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            padding: 12px;
+            margin: 8px 0 0 0;
+            font-size: 12px;
+            color: #cbd5e1;
+            overflow-x: auto;
+        }
+        .empty {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-dim);
+            font-size: 13px;
+            background: var(--surface);
+            border: 1px dashed var(--border);
+            border-radius: 10px;
+        }
+        @media (max-width: 900px) {
+            .grid { grid-template-columns: 1fr; }
+            .flow-banner { flex-direction: column; gap: 12px; }
+            .flow-connector { transform: rotate(90deg); width: 40px; }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <div class="logo-area">
-                <h1>Nex<span>Relay</span></h1>
-                <span class="tagline">Enterprise Integration & Automation Platform · Connect. Transform. Route. Monitor.</span>
+            <div class="brand">
+                <h1>Nex<span>Relay</span> · ServiceNow Integration Hub</h1>
+                <p>Bi-Directional Table API & REST Message Engine</p>
             </div>
-            <div class="status-pill">
-                <div class="pulse-dot"></div>
-                Open Integration Hub Active
+            <div class="status-badge">
+                <div class="status-dot"></div>
+                ServiceNow Listener Ready
             </div>
         </header>
 
-        <!-- Connected Intelligence Flow Visualizer -->
-        <div class="network-canvas">
-            <div class="particle" style="top: 50%;"></div>
-            <div class="node">Inbound Source Systems</div>
-            <div class="core-engine">NexRelay Core Engine</div>
-            <div class="node">Outbound Target Systems</div>
+        <!-- Smooth Data Flow Architecture -->
+        <div class="flow-banner">
+            <div class="flow-node">
+                <strong>ServiceNow Instance</strong>
+                <span>Inbound REST Message</span>
+            </div>
+            <div class="flow-connector">
+                <svg class="flow-svg" viewBox="0 0 120 24">
+                    <line x1="0" y1="12" x2="120" y2="12" class="flow-path" />
+                </svg>
+            </div>
+            <div class="flow-node hub">
+                <strong>NexRelay Engine</strong>
+                <span>Auth & Payload Router</span>
+            </div>
+            <div class="flow-connector">
+                <svg class="flow-svg" viewBox="0 0 120 24">
+                    <line x1="0" y1="12" x2="120" y2="12" class="flow-path" />
+                </svg>
+            </div>
+            <div class="flow-node">
+                <strong>ServiceNow Table API</strong>
+                <span>Outbound HTTP Client</span>
+            </div>
         </div>
 
-        <div class="metrics-grid">
-            <div class="metric-card">
-                <div class="metric-title">Available Connectors</div>
-                <div class="metric-value">6</div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-title">Inbound Records</div>
-                <div class="metric-value" id="m-inbound">0</div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-title">Outbound Records</div>
-                <div class="metric-value" id="m-outbound">0</div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-title">Delivery Health</div>
-                <div class="metric-value" style="color: var(--success);">100%</div>
-            </div>
-        </div>
-
-        <!-- Dual Workspace: Inbound Simulator & Outbound Creation Form -->
-        <div class="workspace-grid">
-            <!-- Left: Inbound Event Trigger (Single-Trigger Locked) -->
+        <div class="grid">
+            <!-- Left Panel: Single-Trigger Inbound Simulator -->
             <div class="card">
-                <h3>1. Inbound Ingestion (External &rarr; NexRelay)</h3>
-                <p>Simulate an incoming payload from a source platform. Creates a single record in the <strong>Inbound Ingress</strong> tab.</p>
-                
-                <label>Source Enterprise Platform</label>
-                <select id="inboundSource">
-                    <option value="servicenow">ServiceNow ITSM</option>
-                    <option value="salesforce">Salesforce CRM</option>
-                    <option value="jira">Jira Software</option>
-                    <option value="workday">Workday HCM</option>
-                    <option value="sap">SAP ERP</option>
-                    <option value="github">GitHub Enterprise</option>
+                <h2>Inbound Listener</h2>
+                <p class="sub">Simulate an incoming ServiceNow payload (single trigger per session).</p>
+
+                <label>ServiceNow Table</label>
+                <select id="inbTable">
+                    <option value="incident">Incident [incident]</option>
+                    <option value="change_request">Change Request [change_request]</option>
+                    <option value="problem">Problem [problem]</option>
+                    <option value="sc_req_item">Requested Item [sc_req_item]</option>
                 </select>
 
-                <label>Inbound Event Type</label>
-                <select id="inboundEventType">
-                    <option value="incident.created">incident.created</option>
-                    <option value="account.updated">account.updated</option>
-                    <option value="issue.resolved">issue.resolved</option>
-                    <option value="employee.onboarded">employee.onboarded</option>
+                <label>Trigger Event</label>
+                <select id="inbEvent">
+                    <option value="record.inserted">After Insert (Created)</option>
+                    <option value="record.updated">After Update (Modified)</option>
                 </select>
 
-                <button class="primary" id="inbound-btn" onclick="triggerInboundOnce()">Send Inbound Payload (Single Event)</button>
+                <label>Inbound Endpoint</label>
+                <input type="text" readonly value="/api/v1/servicenow/inbound" style="color: var(--text-dim); font-family: monospace; font-size: 12px;" />
+
+                <button class="btn-primary" id="inbound-btn" onclick="triggerInboundOnce()">Send Inbound Payload</button>
             </div>
 
-            <!-- Right: Outbound Record Creation Form (NexRelay -> Other System) -->
+            <!-- Right Panel: Postman-Style Outbound HTTP Client -->
             <div class="card">
-                <h3>2. Outbound Dispatch Form (NexRelay &rarr; Other System)</h3>
-                <p>Fill out this form to create and push a new record directly into an external target system.</p>
-                
-                <form id="outboundForm" onsubmit="submitOutboundForm(event)">
-                    <label>Target Destination System</label>
-                    <select id="outTargetSystem" required>
-                        <option value="ServiceNow">ServiceNow ITSM</option>
-                        <option value="Jira">Jira Software</option>
-                        <option value="Salesforce">Salesforce CRM</option>
-                        <option value="Slack">Slack Enterprise Grid</option>
-                        <option value="Microsoft Teams">Microsoft Teams</option>
-                        <option value="Custom REST API">Custom REST API</option>
+                <h2>Outbound HTTP Client (ServiceNow API)</h2>
+                <p class="sub">Execute GET, POST, PUT, PATCH, or DELETE requests directly against your ServiceNow PDI.</p>
+
+                <div class="url-bar">
+                    <select id="httpMethod" onchange="toggleBodyState()">
+                        <option value="GET">GET</option>
+                        <option value="POST" selected>POST</option>
+                        <option value="PUT">PUT</option>
+                        <option value="PATCH">PATCH</option>
+                        <option value="DELETE">DELETE</option>
                     </select>
+                    <input type="url" id="httpUrl" placeholder="https://dev12345.service-now.com/api/now/table/incident" required />
+                    <button class="btn-primary" id="send-btn" onclick="sendOutboundRequest()">Send</button>
+                </div>
 
-                    <label>Record Title / Summary</label>
-                    <input type="text" id="outRecordTitle" placeholder="e.g., Provision New VPN Access for Engineering" required />
+                <!-- Postman Config Sub-Tabs -->
+                <div class="pm-tabs">
+                    <button class="pm-tab active" onclick="switchPmTab('auth', this)">Authorization</button>
+                    <button class="pm-tab" onclick="switchPmTab('headers', this)">Headers</button>
+                    <button class="pm-tab" onclick="switchPmTab('body', this)">Body (JSON)</button>
+                </div>
 
-                    <label>Target Endpoint URL (Optional - leaves blank for sandbox target)</label>
-                    <input type="url" id="outTargetUrl" placeholder="https://your-instance.service-now.com/api/now/table/incident" />
+                <!-- Auth Tab -->
+                <div id="pm-auth" class="pm-panel active">
+                    <label>Auth Type</label>
+                    <select id="authType" onchange="updateAuthPlaceholder()">
+                        <option value="basic">Basic Auth (username:password)</option>
+                        <option value="bearer">Bearer Token (OAuth 2.0)</option>
+                        <option value="none">No Auth</option>
+                    </select>
+                    <label id="authLabel">Credentials (username:password)</label>
+                    <input type="password" id="authValue" placeholder="admin:your_pdi_password" />
+                </div>
 
-                    <label>Record Payload Data (JSON)</label>
-                    <textarea id="outPayload" rows="2">{"priority": "High", "category": "Infrastructure", "requestedBy": "NexRelay"}</textarea>
+                <!-- Headers Tab -->
+                <div id="pm-headers" class="pm-panel">
+                    <div id="headersList">
+                        <div class="header-row">
+                            <input type="text" placeholder="Key" value="Accept" class="h-key" />
+                            <input type="text" placeholder="Value" value="application/json" class="h-val" />
+                            <button type="button" class="icon-btn" onclick="this.parentElement.remove()">&times;</button>
+                        </div>
+                    </div>
+                    <button type="button" class="feed-tab" style="margin-top: 4px;" onclick="addHeaderRow()">+ Add Header</button>
+                </div>
 
-                    <button type="submit" class="outbound-btn" id="outbound-btn">Create Record in Target System</button>
-                </form>
+                <!-- Body Tab -->
+                <div id="pm-body" class="pm-panel">
+                    <label>Raw JSON Payload</label>
+                    <textarea id="httpBody" rows="5">{
+  "short_description": "Automated incident created via NexRelay Hub",
+  "urgency": "2",
+  "impact": "2",
+  "category": "software"
+}</textarea>
+                </div>
             </div>
         </div>
 
-        <!-- Tabs -->
-        <div class="tabs">
-            <button class="tab-btn active" onclick="switchTab('inbound')" id="btn-inbound">Inbound Ingress (0)</button>
-            <button class="tab-btn" onclick="switchTab('outbound')" id="btn-outbound">Outbound Delivery (0)</button>
-            <button class="tab-btn" onclick="switchTab('connectors')" id="btn-connectors">Active Connectors (6)</button>
+        <!-- Execution Logs -->
+        <div class="feed-header">
+            <div class="feed-tabs">
+                <button class="feed-tab active" id="tab-outbound" onclick="switchFeed('outbound')">Outbound Responses (0)</button>
+                <button class="feed-tab" id="tab-inbound" onclick="switchFeed('inbound')">Inbound Payloads (0)</button>
+            </div>
         </div>
 
-        <div id="feed-container">
-            <div class="empty">Page clear. Trigger an inbound event or submit the outbound form above.</div>
+        <div id="logsContainer">
+            <div class="empty">Clean workspace. Send an outbound API request or trigger an inbound payload above.</div>
         </div>
     </div>
 
     <script>
-        let currentTab = 'inbound';
-        let inboundCache = [];
-        let outboundCache = [];
-        let connectorsCache = [];
-        let hasTriggeredInbound = false;
-        let isSubmittingOutbound = false;
+        let activeFeed = 'outbound';
+        let inboundData = [];
+        let outboundData = [];
+        let inboundTriggered = false;
+        let sendingRequest = false;
 
-        function switchTab(tab) {
-            currentTab = tab;
-            ['inbound', 'outbound', 'connectors'].forEach(t => {
-                document.getElementById('btn-' + t).className = t === tab ? 'tab-btn active' : 'tab-btn';
-            });
-            renderData();
+        function switchPmTab(panel, btn) {
+            document.querySelectorAll('.pm-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.pm-panel').forEach(p => p.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById('pm-' + panel).classList.add('active');
         }
 
-        function updateCounters() {
-            document.getElementById('m-inbound').innerText = inboundCache.length;
-            document.getElementById('m-outbound').innerText = outboundCache.length;
-            document.getElementById('btn-inbound').innerText = \`Inbound Ingress (\${inboundCache.length})\`;
-            document.getElementById('btn-outbound').innerText = \`Outbound Delivery (\${outboundCache.length})\`;
-        }
-
-        // Strict single-execution inbound trigger (prevents any duplicate payloads)
-        async function triggerInboundOnce() {
-            if (hasTriggeredInbound) return;
-            hasTriggeredInbound = true;
-
-            const btn = document.getElementById('inbound-btn');
-            btn.disabled = true;
-            btn.innerText = "Inbound Payload Sent (1/1)";
-
-            const source = document.getElementById('inboundSource').value;
-            const eventType = document.getElementById('inboundEventType').value;
-
-            try {
-                const res = await fetch('/api/v1/ingress/' + source, {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + '${SECURE_API_KEY}'
-                    },
-                    body: JSON.stringify({
-                        eventType: eventType,
-                        sourceSystem: source.toUpperCase(),
-                        recordId: 'REC-' + Math.floor(10000 + Math.random() * 90000),
-                        status: 'Received by NexRelay',
-                        timestamp: new Date().toISOString()
-                    })
-                });
-                const data = await res.json();
-                if (res.ok && data.inbound) {
-                    inboundCache.unshift(data.inbound);
-                    updateCounters();
-                    switchTab('inbound');
-                }
-            } catch (e) {
-                console.error(e);
+        function updateAuthPlaceholder() {
+            const type = document.getElementById('authType').value;
+            const label = document.getElementById('authLabel');
+            const input = document.getElementById('authValue');
+            if (type === 'basic') {
+                label.innerText = 'Credentials (username:password)';
+                input.placeholder = 'admin:your_pdi_password';
+                input.disabled = false;
+            } else if (type === 'bearer') {
+                label.innerText = 'OAuth Access Token';
+                input.placeholder = 'Paste ServiceNow OAuth Bearer Token';
+                input.disabled = false;
+            } else {
+                label.innerText = 'No Authorization Required';
+                input.placeholder = 'Disabled';
+                input.disabled = true;
             }
         }
 
-        // Outbound Form Submission -> Creates record in target system & logs in Outbound tab
-        async function submitOutboundForm(e) {
-            e.preventDefault();
-            if (isSubmittingOutbound) return;
+        function addHeaderRow() {
+            const row = document.createElement('div');
+            row.className = 'header-row';
+            row.innerHTML = \`
+                <input type="text" placeholder="Header Key" class="h-key" />
+                <input type="text" placeholder="Header Value" class="h-val" />
+                <button type="button" class="icon-btn" onclick="this.parentElement.remove()">&times;</button>
+            \`;
+            document.getElementById('headersList').appendChild(row);
+        }
 
-            const btn = document.getElementById('outbound-btn');
-            isSubmittingOutbound = true;
+        function toggleBodyState() {
+            const method = document.getElementById('httpMethod').value;
+            const bodyField = document.getElementById('httpBody');
+            bodyField.disabled = (method === 'GET' || method === 'DELETE');
+        }
+
+        function switchFeed(type) {
+            activeFeed = type;
+            document.getElementById('tab-outbound').classList.toggle('active', type === 'outbound');
+            document.getElementById('tab-inbound').classList.toggle('active', type === 'inbound');
+            renderLogs();
+        }
+
+        function updateCounts() {
+            document.getElementById('tab-outbound').innerText = \`Outbound Responses (\${outboundData.length})\`;
+            document.getElementById('tab-inbound').innerText = \`Inbound Payloads (\${inboundData.length})\`;
+        }
+
+        // Single-Trigger Inbound Execution
+        async function triggerInboundOnce() {
+            if (inboundTriggered) return;
+            inboundTriggered = true;
+
+            const btn = document.getElementById('inbound-btn');
             btn.disabled = true;
-            btn.innerText = "Creating Record in Target System...";
+            btn.innerText = 'Inbound Payload Sent (1/1)';
 
-            const targetSystem = document.getElementById('outTargetSystem').value;
-            const recordTitle = document.getElementById('outRecordTitle').value;
-            const targetUrl = document.getElementById('outTargetUrl').value;
-            const customPayload = document.getElementById('outPayload').value;
+            const table = document.getElementById('inbTable').value;
+            const event = document.getElementById('inbEvent').value;
 
             try {
-                const res = await fetch('/api/v1/egress/dispatch', {
+                const res = await fetch('/api/v1/servicenow/inbound', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': 'Bearer ' + '${SECURE_API_KEY}'
                     },
                     body: JSON.stringify({
-                        targetSystem,
-                        recordTitle,
-                        targetUrl,
-                        customPayload
+                        instance: 'dev-servicenow.service-now.com',
+                        table,
+                        event,
+                        number: 'INC00' + Math.floor(10000 + Math.random() * 90000),
+                        short_description: 'ServiceNow inbound webhook simulation payload',
+                        state: 'New',
+                        timestamp: new Date().toISOString()
                     })
                 });
                 const data = await res.json();
-                if (res.ok && data.outbound) {
-                    outboundCache.unshift(data.outbound);
-                    updateCounters();
-                    switchTab('outbound');
-                    document.getElementById('outRecordTitle').value = '';
-                } else {
-                    alert(data.message || 'Failed to dispatch outbound record');
+                if (res.ok && data.record) {
+                    inboundData.unshift(data.record);
+                    updateCounts();
+                    switchFeed('inbound');
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        // Postman-Style Outbound HTTP Execution
+        async function sendOutboundRequest() {
+            if (sendingRequest) return;
+            const url = document.getElementById('httpUrl').value.trim();
+            if (!url) {
+                alert('Please enter a ServiceNow endpoint URL.');
+                return;
+            }
+
+            const method = document.getElementById('httpMethod').value;
+            const authType = document.getElementById('authType').value;
+            const authValue = document.getElementById('authValue').value;
+            const rawBody = document.getElementById('httpBody').value;
+
+            // Collect custom headers
+            const headers = {};
+            document.querySelectorAll('#headersList .header-row').forEach(row => {
+                const k = row.querySelector('.h-key').value.trim();
+                const v = row.querySelector('.h-val').value.trim();
+                if (k) headers[k] = v;
+            });
+
+            let parsedBody = null;
+            if (['POST', 'PUT', 'PATCH'].includes(method) && rawBody.trim()) {
+                try {
+                    parsedBody = JSON.parse(rawBody);
+                } catch (e) {
+                    alert('Invalid JSON in Request Body.');
+                    return;
+                }
+            }
+
+            sendingRequest = true;
+            const btn = document.getElementById('send-btn');
+            btn.disabled = true;
+            btn.innerText = 'Sending...';
+
+            try {
+                const res = await fetch('/api/v1/servicenow/outbound', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        method,
+                        url,
+                        authType,
+                        authValue,
+                        headers,
+                        body: parsedBody
+                    })
+                });
+                const data = await res.json();
+                if (res.ok && data.record) {
+                    outboundData.unshift(data.record);
+                    updateCounts();
+                    switchFeed('outbound');
                 }
             } catch (err) {
                 console.error(err);
             } finally {
-                isSubmittingOutbound = false;
+                sendingRequest = false;
                 btn.disabled = false;
-                btn.innerText = "Create Record in Target System";
+                btn.innerText = 'Send';
             }
         }
 
-        async function loadConnectors() {
-            try {
-                const res = await fetch('/api/v1/connectors');
-                connectorsCache = await res.json();
-            } catch(e) { console.error(e); }
-        }
+        function renderLogs() {
+            const container = document.getElementById('logsContainer');
+            const list = activeFeed === 'outbound' ? outboundData : inboundData;
 
-        function renderData() {
-            const container = document.getElementById('feed-container');
-            if (currentTab === 'connectors') {
-                container.innerHTML = connectorsCache.map(c => \`
-                    <div class="card">
-                        <span class="badge">\${c.category}</span>
-                        <h3 style="margin: 8px 0 4px 0; font-size: 14px; color:#fff;">\${c.name}</h3>
-                        <p style="margin:0; font-size:12px; color: var(--success);">● Status: \${c.status}</p>
+            if (!list.length) {
+                container.innerHTML = \`<div class="empty">No \${activeFeed} records in this session.</div>\`;
+                return;
+            }
+
+            if (activeFeed === 'inbound') {
+                container.innerHTML = list.map(item => \`
+                    <div class="log-card">
+                        <div class="log-meta">
+                            <div>
+                                <span class="badge">SERVICENOW INBOUND</span>
+                                <strong style="margin-left: 8px; color: #fff;">\${item.id}</strong>
+                            </div>
+                            <span style="color: var(--text-dim);">\${item.timestamp}</span>
+                        </div>
+                        <pre>\${JSON.stringify(item.payload, null, 2)}</pre>
                     </div>
                 \`).join('');
-                return;
+            } else {
+                container.innerHTML = list.map(item => {
+                    const isSuccess = item.statusCode >= 200 && item.statusCode < 300;
+                    return \`
+                        <div class="log-card">
+                            <div class="log-meta">
+                                <div>
+                                    <span class="badge">\${item.method}</span>
+                                    <span class="badge \${isSuccess ? 'badge-ok' : 'badge-err'}" style="margin-left: 6px;">\${item.status}</span>
+                                    <span style="margin-left: 8px; color: var(--text-dim); font-size: 11px;">\${item.durationMs} ms</span>
+                                </div>
+                                <span style="color: var(--text-dim);">\${item.timestamp}</span>
+                            </div>
+                            <div style="font-family: monospace; font-size: 12px; color: var(--accent); margin-bottom: 8px; word-break: break-all;">\${item.url}</div>
+                            <label style="margin-top: 8px;">ServiceNow Response Body</label>
+                            <pre>\${JSON.stringify(item.responsePayload, null, 2)}</pre>
+                        </div>
+                    \`;
+                }).join('');
             }
-
-            const list = currentTab === 'inbound' ? inboundCache : outboundCache;
-            if (!list || list.length === 0) {
-                container.innerHTML = \`<div class="empty">No \${currentTab} records yet.</div>\`;
-                return;
-            }
-
-            container.innerHTML = list.map(l => \`
-                <div class="card">
-                    <span class="\${l.type === 'INBOUND' ? 'badge' : 'badge-out'}">\${l.source || l.destination} · \${l.type}</span>
-                    <span class="time">\${l.timestamp}</span>
-                    <h3 style="margin: 10px 0 6px 0; font-size: 13px; color: #fff;">
-                        Transaction ID: \${l.id} \${l.status ? '— <span style="color: var(--success);">' + l.status + '</span>' : ''}
-                    </h3>
-                    <pre>\${JSON.stringify(l.payload, null, 2)}</pre>
-                </div>
-            \`).join('');
         }
-
-        loadConnectors();
     </script>
 </body>
 </html>`);
 });
 
 app.listen(PORT, () => {
-    console.log(`NexRelay Open Enterprise Integration Platform running on port ${PORT}`);
+    console.log(`NexRelay ServiceNow Integration Hub running on port ${PORT}`);
 });
