@@ -1,57 +1,16 @@
-
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(bodyParser.json({ limit: '1mb' }));
+app.use(bodyParser.json());
 
-// Persistent execution history stored beside server.js
-const DATABASE_FILE = path.join(__dirname, 'database.json');
-
-function loadDatabase() {
-    try {
-        if (!fs.existsSync(DATABASE_FILE)) {
-            fs.writeFileSync(DATABASE_FILE, JSON.stringify({ inbound: [], outbound: [] }, null, 2));
-        }
-
-        const data = JSON.parse(fs.readFileSync(DATABASE_FILE, 'utf8'));
-        return {
-            inbound: Array.isArray(data.inbound) ? data.inbound : [],
-            outbound: Array.isArray(data.outbound) ? data.outbound : []
-        };
-    } catch (error) {
-        console.error('[Database] Could not load database.json:', error.message);
-        return { inbound: [], outbound: [] };
-    }
-}
-
-let database = loadDatabase();
-let inboundLogs = database.inbound;
-let outboundLogs = database.outbound;
-
-function saveDatabase() {
-    const tempFile = DATABASE_FILE + '.tmp';
-    try {
-        fs.writeFileSync(tempFile, JSON.stringify({
-            inbound: inboundLogs,
-            outbound: outboundLogs
-        }, null, 2));
-        fs.renameSync(tempFile, DATABASE_FILE);
-    } catch (error) {
-        console.error('[Database] Could not save execution history:', error.message);
-        try {
-            if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
-        } catch (_) {}
-        throw error;
-    }
-}
+let inboundLogs = [];
+let outboundLogs = [];
 
 // 1. ServiceNow Inbound REST Endpoint
 app.post('/api/v1/servicenow/inbound', (req, res) => {
@@ -79,7 +38,6 @@ app.post('/api/v1/servicenow/inbound', (req, res) => {
     };
 
     inboundLogs.unshift(inboundEntry);
-    saveDatabase();
     console.log(`[ServiceNow Inbound] ID: ${syncId}`);
 
     res.status(200).json({
@@ -98,25 +56,6 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
             status: 'Error', 
             message: 'Validation Error: Both HTTP Method and Target Endpoint URL are required to execute the request.' 
         });
-    }
-
-    let targetUrl;
-    try {
-        targetUrl = new URL(url);
-    } catch (_) {
-        return res.status(400).json({ status: 'Error', message: 'Please provide a valid target URL.' });
-    }
-
-    if (targetUrl.protocol !== 'https:' || !targetUrl.hostname.endsWith('.service-now.com')) {
-        return res.status(400).json({
-            status: 'Error',
-            message: 'For security, NexRelay only accepts HTTPS URLs hosted on *.service-now.com.'
-        });
-    }
-
-    const allowedMethods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
-    if (!allowedMethods.includes(String(method).toUpperCase())) {
-        return res.status(400).json({ status: 'Error', message: 'Unsupported HTTP method.' });
     }
 
     const syncId = "SN-OUT-" + Math.floor(100000 + Math.random() * 900000);
@@ -157,7 +96,7 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
     let diagnosticError = null;
 
     try {
-        const response = await fetch(targetUrl.toString(), { ...fetchOptions, signal: AbortSignal.timeout(20000) });
+        const response = await fetch(url, fetchOptions);
         durationMs = Date.now() - startTime;
         responseStatus = response.status;
         statusText = response.statusText;
@@ -189,50 +128,17 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
         durationMs,
         timestamp,
         diagnosticError,
-        requestPayload: fetchOptions.body ? (() => {
-            try { return JSON.parse(fetchOptions.body); }
-            catch (_) { return fetchOptions.body; }
-        })() : null,
+        requestPayload: fetchOptions.body ? JSON.parse(fetchOptions.body) : null,
         responsePayload: responseData
     };
 
     outboundLogs.unshift(outboundEntry);
-    saveDatabase();
     console.log(`[ServiceNow Outbound] ${method.toUpperCase()} ${url} -> ${responseStatus} (${durationMs}ms)`);
 
     res.status(200).json({
-        status: responseStatus >= 200 && responseStatus < 300 ? 'Completed' : 'Failed',
+        status: 'Completed',
         record: outboundEntry
     });
-});
-
-// Read saved execution history
-app.get('/api/v1/servicenow/logs', (req, res) => {
-    res.json({
-        inbound: inboundLogs,
-        outbound: outboundLogs
-    });
-});
-
-// Delete one NexRelay history entry. This does NOT delete the record in ServiceNow.
-app.delete('/api/v1/servicenow/logs/:direction/:id', (req, res) => {
-    const direction = req.params.direction.toLowerCase();
-    const id = req.params.id;
-
-    let selectedLogs;
-    if (direction === 'inbound') selectedLogs = inboundLogs;
-    else if (direction === 'outbound') selectedLogs = outboundLogs;
-    else return res.status(400).json({ status: 'Error', message: 'Invalid log direction.' });
-
-    const index = selectedLogs.findIndex(item => item.id === id);
-    if (index === -1) {
-        return res.status(404).json({ status: 'Error', message: 'History entry not found.' });
-    }
-
-    selectedLogs.splice(index, 1);
-    saveDatabase();
-
-    res.json({ status: 'Success', message: 'NexRelay history entry deleted.' });
 });
 
 // 3. Masterpiece Frontend (Heavy Background Aurora + Constellation Mesh + Clean Non-Overlapping Icon Controls)
@@ -359,194 +265,190 @@ app.get('/', (req, res) => {
             padding-bottom: 24px;
             border-bottom: 1px solid var(--border);
             margin-bottom: 28px;
-            flex-wrap: wrap;
-            gap: 20px;
         }
-
-        .brand { display: flex; align-items: center; gap: 14px; }
-        .brand-icon {
-            width: 48px; height: 48px; border-radius: 14px;
-            display: grid; place-items: center;
-            background: linear-gradient(135deg, #6366f1, #0ea5e9);
-            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.25);
-            font-size: 22px; font-weight: 800; color: white;
+        .brand h1 {
+            margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;
+            display: flex; align-items: center; gap: 10px; color: #fff;
         }
-        .brand h1 { font-size: 22px; margin: 0; letter-spacing: -0.6px; font-weight: 750; }
-        .brand p { margin: 4px 0 0; color: var(--text-muted); font-size: 12px; letter-spacing: 0.3px; }
+        .brand h1 span { color: var(--indigo); text-shadow: 0 0 25px var(--indigo-glow); }
+        .brand p { margin: 6px 0 0 0; font-size: 13px; color: var(--text-muted); }
 
-        .header-status {
-            display: flex; align-items: center; gap: 10px;
-            padding: 8px 14px; border: 1px solid var(--border);
-            border-radius: 999px; background: rgba(16, 22, 40, 0.65);
-            font-size: 12px; color: #cbd5e1;
+        .status-badge {
+            display: flex; align-items: center; gap: 9px;
+            background: rgba(99, 102, 241, 0.12);
+            border: 1px solid rgba(99, 102, 241, 0.35);
+            color: var(--cyan);
+            padding: 7px 16px; border-radius: 999px;
+            font-size: 12px; font-weight: 600;
+            backdrop-filter: blur(8px);
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.15);
         }
         .status-dot {
-            width: 7px; height: 7px; border-radius: 50%;
-            background: var(--emerald); box-shadow: 0 0 10px var(--emerald);
-            animation: statusPulse 2s infinite;
+            width: 8px; height: 8px; background: var(--cyan); border-radius: 50%;
+            animation: pulseDot 2s infinite;
         }
-        @keyframes statusPulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.45; }
+        @keyframes pulseDot {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.8); }
+            50% { box-shadow: 0 0 0 9px rgba(56, 189, 248, 0); }
         }
 
-        .nav-bar {
-            display: flex; gap: 8px; padding: 6px;
-            border: 1px solid var(--border); border-radius: 14px;
-            background: rgba(10, 14, 26, 0.75);
-            margin-bottom: 24px; width: fit-content; max-width: 100%;
-            flex-wrap: wrap;
+        .nav-tabs {
+            display: flex; gap: 12px; margin-bottom: 28px;
         }
         .nav-btn {
-            border: 0; background: transparent; color: var(--text-muted);
-            padding: 11px 18px; border-radius: 9px; font-size: 13px;
-            font-weight: 650; transition: all 0.25s ease;
+            background: rgba(10, 14, 26, 0.85);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            padding: 12px 24px; border-radius: 10px;
+            font-size: 13px; font-weight: 600;
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .nav-btn:hover { color: white; background: rgba(99, 102, 241, 0.1); }
+        .nav-btn:hover { border-color: var(--border-hover); color: #fff; transform: translateY(-1px); }
         .nav-btn.active {
-            color: white; background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(56, 189, 248, 0.12));
-            box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.28);
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(56, 189, 248, 0.12));
+            border-color: var(--indigo);
+            color: var(--cyan);
+            box-shadow: 0 6px 25px rgba(99, 102, 241, 0.25);
         }
 
         .workspace-panel { display: none; }
-        .workspace-panel.active { display: block; animation: heavyFadeIn 0.45s ease forwards; }
+        .workspace-panel.active { display: block; animation: heavyFadeIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 
-        .panel-heading { margin-bottom: 22px; }
-        .panel-heading h2 { margin: 0 0 7px; font-size: 21px; letter-spacing: -0.5px; }
-        .panel-heading p { margin: 0; color: var(--text-muted); font-size: 13px; line-height: 1.6; }
-
-        .workspace-grid {
-            display: grid; grid-template-columns: 1.1fr 0.9fr;
-            gap: 22px; align-items: start;
-        }
         .card {
-            background: var(--surface-card); border: 1px solid var(--border);
-            border-radius: 16px; padding: 22px;
-            box-shadow: 0 18px 45px rgba(0, 0, 0, 0.18);
-            backdrop-filter: blur(18px);
+            background: var(--surface-card);
+            backdrop-filter: blur(14px);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 24px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.45);
+            transition: border-color 0.3s ease;
         }
-        .card h3 { margin: 0 0 18px; font-size: 15px; font-weight: 700; }
-        .field { margin-bottom: 16px; }
-        .field label, label {
-            display: block; color: #cbd5e1; font-size: 11px;
-            font-weight: 700; letter-spacing: 0.7px; text-transform: uppercase;
-            margin-bottom: 8px;
+        .card:hover { border-color: var(--border-hover); }
+        .card h2 { margin: 0 0 6px 0; font-size: 18px; font-weight: 600; color: #fff; }
+        .card .sub { font-size: 13px; color: var(--text-muted); margin: 0 0 24px 0; }
+
+        label {
+            display: block; font-size: 11px; font-weight: 700; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 8px;
         }
         input, select, textarea {
-            width: 100%; border: 1px solid rgba(99, 102, 241, 0.24);
-            background: rgba(3, 4, 9, 0.72); color: white;
-            padding: 12px 13px; border-radius: 9px; outline: none;
-            font-family: inherit; font-size: 13px; transition: border 0.2s ease, box-shadow 0.2s ease;
+            width: 100%; background: var(--bg); border: 1px solid var(--border);
+            color: var(--text-main); padding: 12px 16px; border-radius: 9px;
+            font-size: 13px; margin-bottom: 18px;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
         }
         input:focus, select:focus, textarea:focus {
-            border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1);
+            outline: none; border-color: var(--indigo);
+            box-shadow: 0 0 0 3px var(--indigo-glow);
         }
-        input::placeholder, textarea::placeholder { color: #64748b; }
-        select option { background: #0a0e1a; color: white; }
-        textarea { min-height: 190px; resize: vertical; font-family: "SFMono-Regular", Consolas, monospace; line-height: 1.5; }
-        input:disabled, textarea:disabled { opacity: 0.4; cursor: not-allowed !important; }
+        textarea { font-family: ui-monospace, monospace; font-size: 12px; resize: vertical; }
 
-        .btn {
-            border: 0; border-radius: 9px; padding: 12px 18px;
-            font-weight: 750; font-size: 12px; letter-spacing: 0.4px;
-            color: white; background: linear-gradient(135deg, #6366f1, #2563eb);
-            box-shadow: 0 8px 22px rgba(79, 70, 229, 0.25);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        /* Clean Separated Input + Eye Icon Wrapper (Zero Text Overlap) */
+        .secret-field-wrapper {
+            display: flex;
+            align-items: stretch;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            overflow: hidden;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
         }
-        .btn:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(79, 70, 229, 0.35); }
-        .btn:disabled { opacity: 0.55; transform: none; }
-        .btn-secondary {
-            background: rgba(99, 102, 241, 0.1); border: 1px solid var(--border);
-            box-shadow: none; color: #c7d2fe;
+        .secret-field-wrapper:focus-within {
+            border-color: var(--indigo);
+            box-shadow: 0 0 0 3px var(--indigo-glow);
         }
-        .btn-secondary:hover { background: rgba(99, 102, 241, 0.2); box-shadow: none; }
-        .icon-btn {
-            width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--border);
-            background: rgba(244, 63, 94, 0.08); color: #fda4af; font-size: 18px;
-            display: grid; place-items: center; flex-shrink: 0;
+        .secret-field-wrapper input {
+            flex: 1;
+            border: none;
+            background: transparent;
+            margin-bottom: 0;
+            padding: 12px 14px;
+            min-width: 0;
+        }
+        .secret-field-wrapper input:focus {
+            box-shadow: none;
+        }
+        .eye-btn {
+            background: rgba(24, 34, 60, 0.6);
+            border: none;
+            border-left: 1px solid var(--border);
+            color: var(--text-muted);
+            padding: 0 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: color 0.2s ease, background 0.2s ease;
+        }
+        .eye-btn:hover {
+            color: var(--cyan);
+            background: rgba(99, 102, 241, 0.15);
+        }
+        .eye-btn svg {
+            width: 16px;
+            height: 16px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
         }
 
-        .url-row { display: flex; gap: 8px; }
-        .url-row select { width: 105px; flex-shrink: 0; font-weight: 800; color: var(--cyan); }
-        .url-row input { flex: 1; min-width: 0; }
-        .header-row { display: flex; gap: 8px; margin-bottom: 8px; }
-        .header-row input { flex: 1; min-width: 0; }
-        .auth-fields { display: none; margin-top: 12px; padding: 14px; border: 1px dashed var(--border); border-radius: 10px; }
-        .pm-tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+        .url-bar { display: flex; gap: 12px; margin-bottom: 20px; }
+        .url-bar select { width: 135px; margin-bottom: 0; font-weight: 700; color: var(--cyan); }
+        .url-bar input { flex: 1; margin-bottom: 0; font-family: ui-monospace, monospace; font-size: 12px; }
+        .url-bar button { width: auto; padding: 0 28px; white-space: nowrap; margin-bottom: 0; }
+
+        .pm-tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
         .pm-tab {
-            border: 0; background: transparent; color: var(--text-muted);
-            padding: 10px 12px; font-size: 12px; font-weight: 700;
-            border-bottom: 2px solid transparent;
+            background: none; border: none; color: var(--text-muted); font-size: 12px; font-weight: 600;
+            padding: 8px 2px 14px 2px; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s ease;
         }
-        .pm-tab.active { color: var(--cyan); border-bottom-color: var(--cyan); }
+        .pm-tab.active { color: var(--cyan); border-bottom-color: var(--indigo); }
         .pm-panel { display: none; }
-        .pm-panel.active { display: block; }
-        .helper-text { color: var(--text-muted); font-size: 11px; line-height: 1.5; margin-top: 7px; }
-        .endpoint-box {
-            border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 10px;
-            background: rgba(56, 189, 248, 0.05); padding: 13px;
-            font-family: monospace; font-size: 11px; color: #7dd3fc;
-            word-break: break-all; line-height: 1.6;
-        }
+        .pm-panel.active { display: block; animation: heavyFadeIn 0.3s ease; }
 
-        .logs-container { display: grid; gap: 14px; }
+        .header-row { display: grid; grid-template-columns: 1fr 1fr 40px; gap: 12px; margin-bottom: 12px; }
+        .header-row input { margin-bottom: 0; font-size: 12px; padding: 9px 14px; }
+        .icon-btn {
+            background: var(--surface-elevated); border: 1px solid var(--border); color: var(--text-muted);
+            border-radius: 9px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center;
+        }
+        .icon-btn:hover { color: var(--danger); border-color: var(--danger); }
+
+        .btn-primary {
+            width: 100%; background: linear-gradient(135deg, var(--indigo), #4f46e5);
+            color: #fff; border: none; padding: 13px 20px; border-radius: 10px;
+            font-weight: 700; font-size: 13px; cursor: pointer;
+            box-shadow: 0 6px 20px var(--indigo-glow);
+            transition: transform 0.2s ease, filter 0.2s ease;
+        }
+        .btn-primary:hover:not(:disabled) { filter: brightness(1.12); transform: translateY(-1px); }
+        .btn-primary:disabled { background: var(--surface-elevated); color: var(--text-muted); cursor: not-allowed; box-shadow: none; }
+
         .log-card {
-            background: rgba(10, 14, 26, 0.8); border: 1px solid var(--border);
-            border-radius: 12px; padding: 17px; overflow: hidden;
+            background: var(--surface-card); backdrop-filter: blur(12px);
+            border: 1px solid var(--border); border-radius: 14px;
+            padding: 22px; margin-bottom: 18px; animation: heavyFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .log-meta {
-            display: flex; justify-content: space-between; align-items: center;
-            gap: 12px; flex-wrap: wrap; margin-bottom: 12px;
-        }
+        .log-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; font-size: 12px; }
         .badge {
-            display: inline-flex; padding: 5px 8px; border-radius: 6px;
-            background: rgba(99, 102, 241, 0.14); color: #a5b4fc;
-            font-size: 10px; font-weight: 800; letter-spacing: 0.5px;
+            padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 11px;
+            background: rgba(99, 102, 241, 0.2); color: var(--cyan);
         }
-        .badge-ok { background: rgba(16, 185, 129, 0.12); color: #6ee7b7; }
-        .badge-err { background: rgba(244, 63, 94, 0.12); color: #fda4af; }
-        .log-card pre {
-            margin: 10px 0 0; padding: 13px; border-radius: 8px;
-            background: rgba(3, 4, 9, 0.75); color: #cbd5e1;
-            font-size: 11px; line-height: 1.55; overflow-x: auto;
-            white-space: pre-wrap; word-break: break-word;
+        .badge-ok { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+        .badge-err { background: rgba(244, 63, 94, 0.2); color: var(--danger); }
+
+        pre {
+            background: var(--bg); border: 1px solid var(--border); border-radius: 9px;
+            padding: 16px; margin: 10px 0 0 0; font-size: 12px; color: #cbd5e1; overflow-x: auto;
         }
         .empty {
-            padding: 50px 20px; text-align: center; color: var(--text-muted);
-            border: 1px dashed var(--border); border-radius: 14px; font-size: 13px;
-        }
-        .delete-log-btn {
-            border: 1px solid rgba(244, 63, 94, 0.35);
-            background: rgba(244, 63, 94, 0.10);
-            color: #fda4af;
-            border-radius: 7px;
-            padding: 6px 10px;
-            font-size: 10px;
-            font-weight: 800;
-            letter-spacing: 0.4px;
-        }
-        .delete-log-btn:hover {
-            background: rgba(244, 63, 94, 0.22);
-            border-color: rgba(244, 63, 94, 0.65);
-        }
-
-        .footer {
-            margin-top: 38px; padding-top: 18px; border-top: 1px solid var(--border);
-            color: #64748b; font-size: 11px; text-align: center;
-        }
-
-        @media (max-width: 850px) {
-            body { padding: 24px 15px; }
-            .workspace-grid { grid-template-columns: 1fr; }
-            .nav-bar { width: 100%; }
-            .nav-btn { flex: 1; padding: 10px 8px; }
-        }
-        @media (max-width: 480px) {
-            .brand h1 { font-size: 18px; }
-            .brand-icon { width: 42px; height: 42px; }
-            .url-row { flex-direction: column; }
-            .url-row select { width: 100%; }
-            .card { padding: 16px; }
+            text-align: center; padding: 60px; color: var(--text-muted); font-size: 13px;
+            background: var(--surface-card); backdrop-filter: blur(12px);
+            border: 1px dashed var(--border); border-radius: 14px;
         }
     </style>
 </head>
@@ -557,253 +459,306 @@ app.get('/', (req, res) => {
     <div class="cursor-dot" id="cursorDot"></div>
     <div class="cursor-outline" id="cursorOutline"></div>
 
-    <div class="container">
+    <div class="container animate-in">
         <header>
             <div class="brand">
-                <div class="brand-icon">N</div>
-                <div>
-                    <h1>NexRelay</h1>
-                    <p>SERVICENOW INTEGRATION HUB</p>
-                </div>
+                <h1>Nex<span>Relay</span> · ServiceNow Integration Hub</h1>
+                <p>Masterpiece Bi-Directional Table API & REST Proxy</p>
             </div>
-            <div class="header-status">
-                <span class="status-dot"></span>
-                <span>Gateway Online</span>
+            <div class="status-badge">
+                <div class="status-dot"></div>
+                Secure Gateway Online
             </div>
         </header>
 
-        <nav class="nav-bar">
+        <!-- Navigation Tabs -->
+        <div class="nav-tabs">
             <button class="nav-btn active" onclick="switchPanel('inbound', this)">Inbound Link</button>
             <button class="nav-btn" onclick="switchPanel('outbound', this)">Outbound HTTP Client</button>
-            <button class="nav-btn" onclick="switchPanel('logs', this)">Execution Logs <span id="logCount" style="margin-left: 5px; opacity: 0.7;">0</span></button>
-        </nav>
+            <button class="nav-btn" onclick="switchPanel('logs', this)">Execution Logs (<span id="logCount">0</span>)</button>
+        </div>
 
-        <section class="workspace-panel active" id="panel-inbound">
-            <div class="panel-heading">
-                <h2>Inbound Data Gateway</h2>
-                <p>Securely receive and inspect payloads pushed from your ServiceNow instance.</p>
-            </div>
-            <div class="workspace-grid">
-                <div class="card">
-                    <h3>Endpoint Configuration</h3>
-                    <div class="field">
-                        <label>Public Inbound Endpoint</label>
-                        <div class="endpoint-box" id="inboundEndpoint">Loading endpoint...</div>
-                        <p class="helper-text">Configure this URL in your ServiceNow REST Message or outbound integration.</p>
-                    </div>
-                    <div class="field">
-                        <label>Authentication Header</label>
-                        <div class="endpoint-box">Authorization: Bearer sn_nex_your_secret_token</div>
-                        <p class="helper-text">Requests must include a Bearer token beginning with the configured NexRelay prefix.</p>
-                    </div>
+        <!-- Panel 1: Inbound Link Only -->
+        <div id="panel-inbound" class="workspace-panel active">
+            <div class="card" style="max-width: 720px;">
+                <h2>Inbound Webhook Endpoint</h2>
+                <p class="sub">Provide this exact website link and device-specific session token to your ServiceNow instance to ingest payloads.</p>
+
+                <label>Secured Inbound Webhook URL</label>
+                <div style="display: flex; gap: 10px; margin-bottom: 22px;">
+                    <input type="text" id="inboundUrlBox" readonly style="margin-bottom: 0; font-family: monospace; color: var(--cyan);" />
+                    <button class="btn-primary" style="width: auto; padding: 0 24px;" onclick="copyInboundUrl()">Copy Link</button>
                 </div>
-                <div class="card">
-                    <h3>Gateway Status</h3>
-                    <div class="endpoint-box">
-                        <strong style="color: #6ee7b7;">● Listening</strong><br><br>
-                        Method: POST<br>
-                        Path: /api/v1/servicenow/inbound<br>
-                        Content-Type: application/json
-                    </div>
-                    <p class="helper-text">Incoming requests are validated, recorded, and displayed in Execution Logs.</p>
+
+                <label>Required Authorization Header (Device-Specific Ephemeral Bearer Token)</label>
+                <div class="secret-field-wrapper">
+                    <input type="password" id="authHeaderBox" readonly style="font-family: monospace; color: var(--text-muted);" />
+                    <button type="button" class="eye-btn" title="Show/Hide Token" onclick="toggleVisibility('authHeaderBox', this)">
+                        <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    </button>
                 </div>
             </div>
-        </section>
+        </div>
 
-        <section class="workspace-panel" id="panel-outbound">
-            <div class="panel-heading">
-                <h2>Outbound HTTP Client</h2>
-                <p>Send authenticated REST API requests from NexRelay to your ServiceNow instance.</p>
-            </div>
-            <div class="workspace-grid">
-                <div class="card">
-                    <h3>Request Builder</h3>
-                    <div class="url-row field">
-                        <select id="httpMethod" onchange="toggleBodyState()">
-                            <option>GET</option>
-                            <option>POST</option>
-                            <option>PUT</option>
-                            <option>PATCH</option>
-                            <option>DELETE</option>
-                        </select>
-                        <input type="text" id="httpUrl" placeholder="https://your-instance.service-now.com/api/now/table/incident">
-                    </div>
+        <!-- Panel 2: Outbound HTTP Client -->
+        <div id="panel-outbound" class="workspace-panel">
+            <div class="card">
+                <h2>Postman-Grade Outbound HTTP Proxy</h2>
+                <p class="sub">Execute authenticated requests against your ServiceNow Table API or Scripted REST APIs.</p>
 
-                    <div class="pm-tabs">
-                        <button class="pm-tab active" onclick="switchPmTab('auth', this)">Authorization</button>
-                        <button class="pm-tab" onclick="switchPmTab('headers', this)">Headers</button>
-                        <button class="pm-tab" onclick="switchPmTab('body', this)">Body</button>
-                    </div>
+                <div class="url-bar">
+                    <select id="httpMethod" onchange="toggleBodyState()">
+                        <option value="GET">GET</option>
+                        <option value="POST" selected>POST</option>
+                        <option value="PUT">PUT</option>
+                        <option value="PATCH">PATCH</option>
+                        <option value="DELETE">DELETE</option>
+                    </select>
+                    <input type="url" id="httpUrl" placeholder="https://dev12345.service-now.com/api/now/table/incident" required />
+                    <button class="btn-primary" id="send-btn" onclick="sendOutboundRequest()">Send Request</button>
+                </div>
 
-                    <div class="pm-panel active" id="pm-auth">
-                        <div class="field">
-                            <label>Authentication Type</label>
-                            <select id="authType" onchange="updateAuthFields()">
-                                <option value="none">No Auth</option>
-                                <option value="basic">Basic Auth</option>
-                                <option value="bearer">Bearer Token</option>
-                            </select>
-                        </div>
-                        <div class="auth-fields" id="basicAuthFields">
-                            <div class="field">
-                                <label>ServiceNow Username</label>
-                                <input type="text" id="basicUser" placeholder="admin">
+                <div class="pm-tabs">
+                    <button class="pm-tab active" onclick="switchPmTab('auth', this)">Authorization</button>
+                    <button class="pm-tab" onclick="switchPmTab('headers', this)">Headers</button>
+                    <button class="pm-tab" onclick="switchPmTab('body', this)">Body (JSON)</button>
+                </div>
+
+                <!-- Auth Sub-panel -->
+                <div id="pm-auth" class="pm-panel active">
+                    <label>Auth Type</label>
+                    <select id="authType" onchange="updateAuthFields()">
+                        <option value="basic">Basic Auth (Separate Username & Password)</option>
+                        <option value="bearer">Bearer Token (OAuth 2.0)</option>
+                        <option value="none">No Auth</option>
+                    </select>
+
+                    <div id="basicAuthFields">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                            <div>
+                                <label>Username</label>
+                                <input type="text" id="basicUser" placeholder="admin" style="margin-bottom: 0;" />
                             </div>
-                            <div class="field">
-                                <label>ServiceNow Password</label>
-                                <input type="password" id="basicPass" placeholder="••••••••">
-                            </div>
-                        </div>
-                        <div class="auth-fields" id="bearerAuthField">
-                            <div class="field">
-                                <label>Bearer Token</label>
-                                <input type="password" id="bearerToken" placeholder="Enter access token">
-                            </div>
-                        </div>
-                        <p class="helper-text">Credentials are sent to the selected ServiceNow endpoint by the NexRelay server.</p>
-                    </div>
-
-                    <div class="pm-panel" id="pm-headers">
-                        <div class="field">
-                            <label>Custom Request Headers</label>
-                            <div id="headersList">
-                                <div class="header-row">
-                                    <input type="text" placeholder="Key" class="h-key" value="Accept">
-                                    <input type="text" placeholder="Value" class="h-val" value="application/json">
-                                    <button type="button" class="icon-btn" onclick="this.parentElement.remove()">&times;</button>
+                            <div>
+                                <label>Password</label>
+                                <div class="secret-field-wrapper">
+                                    <input type="password" id="basicPass" placeholder="your_pdi_password" />
+                                    <button type="button" class="eye-btn" title="Show/Hide Password" onclick="toggleVisibility('basicPass', this)">
+                                        <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                    </button>
                                 </div>
                             </div>
-                            <button type="button" class="btn btn-secondary" onclick="addHeaderRow()">+ Add Header</button>
                         </div>
                     </div>
 
-                    <div class="pm-panel" id="pm-body">
-                        <div class="field">
-                            <label>Request Body (JSON)</label>
-                            <textarea id="httpBody" spellcheck="false" placeholder='{"short_description": "Test incident from NexRelay"}'></textarea>
-                            <p class="helper-text">Used for POST, PUT, and PATCH requests. Enter valid JSON.</p>
+                    <div id="bearerAuthField" style="display: none;">
+                        <label>OAuth Access Token</label>
+                        <div class="secret-field-wrapper">
+                            <input type="password" id="bearerToken" placeholder="Paste ServiceNow OAuth Bearer Token" />
+                            <button type="button" class="eye-btn" title="Show/Hide Token" onclick="toggleVisibility('bearerToken', this)">
+                                <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                            </button>
                         </div>
                     </div>
-
-                    <button class="btn" id="send-btn" style="width: 100%; margin-top: 10px;" onclick="sendOutboundRequest()">Send Request</button>
                 </div>
 
-                <div class="card">
-                    <h3>Request Information</h3>
-                    <div class="endpoint-box">
-                        <strong style="color: #7dd3fc;">ServiceNow Table API Example</strong><br><br>
-                        POST<br>
-                        https://your-instance.service-now.com/api/now/table/incident<br><br>
-                        <span style="color: #94a3b8;">Creates a new incident record when the ServiceNow API accepts the request.</span>
+                <!-- Headers Sub-panel -->
+                <div id="pm-headers" class="pm-panel">
+                    <div id="headersList">
+                        <div class="header-row">
+                            <input type="text" placeholder="Key" value="Accept" class="h-key" />
+                            <input type="text" placeholder="Value" value="application/json" class="h-val" />
+                            <button type="button" class="icon-btn" onclick="this.parentElement.remove()">&times;</button>
+                        </div>
                     </div>
-                    <p class="helper-text">Use your own ServiceNow instance URL and credentials. The authenticated request is forwarded by the NexRelay server.</p>
+                    <button type="button" class="nav-btn" style="padding: 8px 16px; font-size: 12px; margin-top: 8px;" onclick="addHeaderRow()">+ Add Header</button>
+                </div>
+
+                <!-- Body Sub-panel -->
+                <div id="pm-body" class="pm-panel">
+                    <label>Raw JSON Body</label>
+                    <textarea id="httpBody" rows="6">{
+  "short_description": "Elite automated incident created via NexRelay Hub",
+  "urgency": "2",
+  "impact": "2",
+  "category": "software"
+}</textarea>
                 </div>
             </div>
-        </section>
+        </div>
 
-        <section class="workspace-panel" id="panel-logs">
-            <div class="panel-heading">
-                <h2>Execution History</h2>
-                <p>Review inbound payloads and outbound ServiceNow API responses.</p>
+        <!-- Panel 3: Execution Logs -->
+        <div id="panel-logs" class="workspace-panel">
+            <div class="card" style="background: transparent; border: none; padding: 0; box-shadow: none;">
+                <h2>Execution History & Diagnostics</h2>
+                <p class="sub">Real-time audit trail of inbound webhook receptions and outbound proxy responses.</p>
+                <div id="logsContainer">
+                    <div class="empty">No execution logs recorded in this session.</div>
+                </div>
             </div>
-            <div class="logs-container" id="logsContainer">
-                <div class="empty">Loading execution history...</div>
-            </div>
-        </section>
-
-        <div class="footer">
-            NexRelay Integration Hub · ServiceNow REST API Gateway
         </div>
     </div>
 
     <script>
-        // Dynamic public endpoint display
-        document.getElementById('inboundEndpoint').innerText = window.location.origin + '/api/v1/servicenow/inbound';
+        // Generate or retrieve randomized ephemeral device token
+        let deviceToken = localStorage.getItem('nex_device_token');
+        if (!deviceToken) {
+            const randomHex = Array.from(crypto.getRandomValues(new Uint8Array(24)))
+                .map(b => b.toString(16).padStart(2, '0')).join('');
+            deviceToken = 'sn_dev_' + randomHex;
+            localStorage.setItem('nex_device_token', deviceToken);
+        }
 
-        // Custom cursor tracking
-        const cursorDot = document.getElementById('cursorDot');
-        const cursorOutline = document.getElementById('cursorOutline');
+        // Set dynamic inbound URL and randomized device token header
+        document.getElementById('inboundUrlBox').value = window.location.origin + '/api/v1/servicenow/inbound';
+        document.getElementById('authHeaderBox').value = 'Authorization: Bearer ' + deviceToken;
 
-        document.addEventListener('mousemove', (e) => {
-            cursorDot.style.left = e.clientX + 'px';
-            cursorDot.style.top = e.clientY + 'px';
-            cursorOutline.style.left = e.clientX + 'px';
-            cursorOutline.style.top = e.clientY + 'px';
+        function copyInboundUrl() {
+            const box = document.getElementById('inboundUrlBox');
+            navigator.clipboard.writeText(box.value);
+            alert('Inbound Webhook Link copied to clipboard successfully!');
+        }
+
+        // Clean SVG Eye / Eye-Off Toggle Function
+        const eyeOpenSvg = '<svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+        const eyeOffSvg = '<svg viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+
+        function toggleVisibility(fieldId, btn) {
+            const field = document.getElementById(fieldId);
+            if (field.type === 'password') {
+                field.type = 'text';
+                btn.innerHTML = eyeOffSvg;
+            } else {
+                field.type = 'password';
+                btn.innerHTML = eyeOpenSvg;
+            }
+        }
+
+        // Heavy Interactive Neural Constellation & Data Pulse Background Animation
+        const canvas = document.getElementById('bgCanvas');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+        let nodes = [];
+        let pointer = { x: -1000, y: -1000 };
+
+        function resizeCanvas() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        window.addEventListener('mousemove', e => {
+            pointer.x = e.clientX;
+            pointer.y = e.clientY;
         });
 
+        const NODE_COUNT = 65;
+        for (let i = 0; i < NODE_COUNT; i++) {
+            nodes.push({
+                x: Math.random() * width,
+                y: Math.random() * height,
+                vx: (Math.random() - 0.5) * 0.55,
+                vy: (Math.random() - 0.5) * 0.55,
+                radius: Math.random() * 2.2 + 1.2,
+                pulsePhase: Math.random() * Math.PI * 2,
+                isCyan: Math.random() > 0.65
+            });
+        }
+
+        function animateCanvas() {
+            ctx.clearRect(0, 0, width, height);
+
+            for (let i = 0; i < nodes.length; i++) {
+                const n = nodes[i];
+                n.x += n.vx;
+                n.y += n.vy;
+                n.pulsePhase += 0.03;
+
+                if (n.x < 0 || n.x > width) n.vx *= -1;
+                if (n.y < 0 || n.y > height) n.vy *= -1;
+
+                // Subtle magnetic drift toward cursor
+                const dxMouse = pointer.x - n.x;
+                const dyMouse = pointer.y - n.y;
+                const distMouse = Math.hypot(dxMouse, dyMouse);
+                if (distMouse < 220) {
+                    n.x += dxMouse * 0.004;
+                    n.y += dyMouse * 0.004;
+                }
+
+                const glowAlpha = 0.35 + Math.sin(n.pulsePhase) * 0.25;
+                ctx.beginPath();
+                ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
+                ctx.fillStyle = n.isCyan 
+                    ? \`rgba(56, 189, 248, \${glowAlpha})\` 
+                    : \`rgba(99, 102, 241, \${glowAlpha + 0.1})\`;
+                ctx.fill();
+
+                // Connect nearby nodes
+                for (let j = i + 1; j < nodes.length; j++) {
+                    const n2 = nodes[j];
+                    const dist = Math.hypot(n.x - n2.x, n.y - n2.y);
+                    if (dist < 155) {
+                        const lineAlpha = (1 - dist / 155) * 0.22;
+                        ctx.beginPath();
+                        ctx.moveTo(n.x, n.y);
+                        ctx.lineTo(n2.x, n2.y);
+                        ctx.strokeStyle = \`rgba(99, 102, 241, \${lineAlpha})\`;
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                }
+
+                // Connect nodes to cursor
+                if (distMouse < 180) {
+                    const mouseLineAlpha = (1 - distMouse / 180) * 0.35;
+                    ctx.beginPath();
+                    ctx.moveTo(n.x, n.y);
+                    ctx.lineTo(pointer.x, pointer.y);
+                    ctx.strokeStyle = \`rgba(56, 189, 248, \${mouseLineAlpha})\`;
+                    ctx.lineWidth = 1.1;
+                    ctx.stroke();
+                }
+            }
+            requestAnimationFrame(animateCanvas);
+        }
+        animateCanvas();
+
+        // Custom Glowing Cursor Movement
+        const dot = document.getElementById('cursorDot');
+        const outline = document.getElementById('cursorOutline');
+        let mouseX = 0, mouseY = 0, outlineX = 0, outlineY = 0;
+
+        window.addEventListener('mousemove', e => {
+            mouseX = e.clientX; mouseY = e.clientY;
+            dot.style.left = mouseX + 'px';
+            dot.style.top = mouseY + 'px';
+        });
+
+        function renderCursor() {
+            outlineX += (mouseX - outlineX) * 0.22;
+            outlineY += (mouseY - outlineY) * 0.22;
+            outline.style.left = outlineX + 'px';
+            outline.style.top = outlineY + 'px';
+            requestAnimationFrame(renderCursor);
+        }
+        renderCursor();
+
         function bindHoverListeners() {
-            document.querySelectorAll('button, input, select, textarea, a, .nav-btn, .pm-tab').forEach(el => {
-                if (el.dataset.hoverBound) return;
-                el.dataset.hoverBound = 'true';
+            document.querySelectorAll('button, input, select, textarea').forEach(el => {
                 el.addEventListener('mouseenter', () => document.body.classList.add('hovering'));
                 el.addEventListener('mouseleave', () => document.body.classList.remove('hovering'));
             });
         }
         bindHoverListeners();
 
-        // Animated constellation mesh
-        const canvas = document.getElementById('bgCanvas');
-        const ctx = canvas.getContext('2d');
-        let particles = [];
-
-        function resizeCanvas() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-            particles = [];
-            const count = Math.min(65, Math.floor((canvas.width * canvas.height) / 18000));
-            for (let i = 0; i < count; i++) {
-                particles.push({
-                    x: Math.random() * canvas.width,
-                    y: Math.random() * canvas.height,
-                    vx: (Math.random() - 0.5) * 0.35,
-                    vy: (Math.random() - 0.5) * 0.35,
-                    radius: Math.random() * 1.5 + 0.5
-                });
-            }
-        }
-        window.addEventListener('resize', resizeCanvas);
-        resizeCanvas();
-
-        function animateMesh() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            for (let i = 0; i < particles.length; i++) {
-                const p = particles[i];
-                p.x += p.vx;
-                p.y += p.vy;
-                if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
-                if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
-
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-                ctx.fillStyle = 'rgba(129, 140, 248, 0.7)';
-                ctx.fill();
-
-                for (let j = i + 1; j < particles.length; j++) {
-                    const q = particles[j];
-                    const dx = p.x - q.x;
-                    const dy = p.y - q.y;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-                    if (dist < 145) {
-                        ctx.beginPath();
-                        ctx.moveTo(p.x, p.y);
-                        ctx.lineTo(q.x, q.y);
-                        ctx.strokeStyle = `rgba(99, 102, 241, ${0.13 * (1 - dist / 145)})`;
-                        ctx.lineWidth = 0.7;
-                        ctx.stroke();
-                    }
-                }
-            }
-            requestAnimationFrame(animateMesh);
-        }
-        animateMesh();
-
-        // Panel Display Switcher
+        // Single Panel Display Switcher
         function switchPanel(panelId, btn) {
             document.querySelectorAll('.workspace-panel').forEach(p => p.classList.remove('active'));
             document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
             document.getElementById('panel-' + panelId).classList.add('active');
             btn.classList.add('active');
-            if (panelId === 'logs') loadLogs();
         }
 
         function switchPmTab(panel, btn) {
@@ -850,45 +805,6 @@ app.get('/', (req, res) => {
 
         let inboundData = [];
         let outboundData = [];
-
-        async function loadLogs() {
-            try {
-                const response = await fetch('/api/v1/servicenow/logs');
-                if (!response.ok) throw new Error('Unable to load execution history.');
-                const data = await response.json();
-                inboundData = Array.isArray(data.inbound) ? data.inbound : [];
-                outboundData = Array.isArray(data.outbound) ? data.outbound : [];
-                updateLogCount();
-                renderLogs();
-            } catch (error) {
-                console.error('[NexRelay] Log loading failed:', error);
-            }
-        }
-
-        async function deleteLog(direction, id) {
-            if (!confirm('Delete this NexRelay history entry? This will not delete the actual ServiceNow record.')) return;
-
-            try {
-                const response = await fetch('/api/v1/servicenow/logs/' + direction + '/' + encodeURIComponent(id), {
-                    method: 'DELETE'
-                });
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.message || 'Delete failed.');
-                await loadLogs();
-            } catch (error) {
-                alert(error.message);
-            }
-        }
-
-        function escapeHtml(value) {
-            return String(value ?? '').replace(/[&<>"']/g, character => ({
-                '&': '&amp;',
-                '<': '&lt;',
-                '>': '&gt;',
-                '"': '&quot;',
-                "'": '&#39;'
-            })[character]);
-        }
 
         function updateLogCount() {
             const total = inboundData.length + outboundData.length;
@@ -941,11 +857,11 @@ app.get('/', (req, res) => {
                     body: JSON.stringify({ method, url, authType, basicUser, basicPass, bearerToken, headers, body: parsedBody })
                 });
                 const data = await res.json();
-                if (data.record) {
-                    await loadLogs();
+                if (res.ok && data.record) {
+                    outboundData.unshift(data.record);
+                    updateLogCount();
+                    renderLogs();
                     document.querySelector('.nav-btn:nth-child(3)').click();
-                } else {
-                    alert(data.message || 'The outbound request could not be completed.');
                 }
             } catch (err) {
                 console.error(err);
@@ -961,28 +877,22 @@ app.get('/', (req, res) => {
             const allLogs = [...outboundData, ...inboundData];
 
             if (!allLogs.length) {
-                container.innerHTML = \`<div class="empty">No execution logs recorded yet.</div>\`;
+                container.innerHTML = \`<div class="empty">No execution logs recorded in this session.</div>\`;
                 return;
             }
 
             container.innerHTML = allLogs.map(item => {
-                const safeId = escapeHtml(item.id);
-                const safeTimestamp = escapeHtml(item.timestamp);
-
                 if (item.direction === 'INBOUND') {
                     return \`
                         <div class="log-card">
                             <div class="log-meta">
                                 <div>
                                     <span class="badge">SERVICENOW INBOUND</span>
-                                    <strong style="margin-left: 8px; color: #fff;">\${safeId}</strong>
+                                    <strong style="margin-left: 8px; color: #fff;">\${item.id}</strong>
                                 </div>
-                                <div style="display:flex; align-items:center; gap:12px;">
-                                    <span style="color: var(--text-muted);">\${safeTimestamp}</span>
-                                    <button class="delete-log-btn" onclick="deleteLog('inbound', '\${safeId}')">Delete</button>
-                                </div>
+                                <span style="color: var(--text-muted);">\${item.timestamp}</span>
                             </div>
-                            <pre>\${escapeHtml(JSON.stringify(item.payload, null, 2))}</pre>
+                            <pre>\${JSON.stringify(item.payload, null, 2)}</pre>
                         </div>
                     \`;
                 } else {
@@ -991,26 +901,20 @@ app.get('/', (req, res) => {
                         <div class="log-card">
                             <div class="log-meta">
                                 <div>
-                                    <span class="badge">\${escapeHtml(item.method)}</span>
-                                    <span class="badge \${isSuccess ? 'badge-ok' : 'badge-err'}" style="margin-left: 6px;">\${escapeHtml(item.status)}</span>
-                                    <span style="margin-left: 8px; color: var(--text-muted); font-size: 11px;">\${escapeHtml(item.durationMs)} ms</span>
+                                    <span class="badge">\${item.method}</span>
+                                    <span class="badge \${isSuccess ? 'badge-ok' : 'badge-err'}" style="margin-left: 6px;">\${item.status}</span>
+                                    <span style="margin-left: 8px; color: var(--text-muted); font-size: 11px;">\${item.durationMs} ms</span>
                                 </div>
-                                <div style="display:flex; align-items:center; gap:12px;">
-                                    <span style="color: var(--text-muted);">\${safeTimestamp}</span>
-                                    <button class="delete-log-btn" onclick="deleteLog('outbound', '\${safeId}')">Delete</button>
-                                </div>
+                                <span style="color: var(--text-muted);">\${item.timestamp}</span>
                             </div>
-                            <div style="font-family: monospace; font-size: 12px; color: var(--cyan); margin-bottom: 8px; word-break: break-all;">\${escapeHtml(item.url)}</div>
+                            <div style="font-family: monospace; font-size: 12px; color: var(--cyan); margin-bottom: 8px; word-break: break-all;">\${item.url}</div>
                             <label style="margin-top: 8px;">Response Payload</label>
-                            <pre>\${escapeHtml(JSON.stringify(item.responsePayload, null, 2))}</pre>
+                            <pre>\${JSON.stringify(item.responsePayload, null, 2)}</pre>
                         </div>
                     \`;
                 }
             }).join('');
         }
-
-        // Load previously saved history when the dashboard opens.
-        loadLogs();
     </script>
 </body>
 </html>`);
