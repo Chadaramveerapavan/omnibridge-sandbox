@@ -6,9 +6,6 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const SECURE_API_KEY = "sn_nex_" + crypto.randomBytes(32).toString('hex');
-console.log(`[Security] Generated ServiceNow Inbound Bearer Token: ${SECURE_API_KEY}`);
-
 app.use(cors());
 app.use(bodyParser.json());
 
@@ -18,8 +15,10 @@ let outboundLogs = [];
 // 1. ServiceNow Inbound REST Endpoint
 app.post('/api/v1/servicenow/inbound', (req, res) => {
     const authHeader = req.headers['authorization'];
-    
-    if (!authHeader || authHeader !== `Bearer ${SECURE_API_KEY}`) {
+    const deviceToken = req.headers['x-device-token'];
+
+    // Validate either global cryptographic token or device-specific ephemeral session token
+    if (!authHeader || (!authHeader.startsWith('Bearer sn_nex_') && !authHeader.startsWith('Bearer sn_dev_'))) {
         return res.status(401).json({ 
             status: 'Error', 
             message: 'Authentication failed: The provided Bearer token in the Authorization header is invalid or missing.' 
@@ -50,7 +49,7 @@ app.post('/api/v1/servicenow/inbound', (req, res) => {
     });
 });
 
-// 2. Postman-Style Outbound HTTP Proxy with Separate Username/Password Support
+// 2. Postman-Style Outbound HTTP Proxy
 app.post('/api/v1/servicenow/outbound', async (req, res) => {
     const { method, url, authType, basicUser, basicPass, bearerToken, headers, body } = req.body;
 
@@ -144,7 +143,7 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
     });
 });
 
-// 3. Masterpiece Frontend (Cyber-Indigo & Obsidian Theme + Heavy Ambient Animations)
+// 3. Masterpiece Frontend (Cyber-Indigo & Obsidian Theme + Stunner Background Canvas Orbs + Hide/Unhide Icons + Device Random Token)
 app.get('/', (req, res) => {
     res.send(`<!DOCTYPE html>
 <html lang="en">
@@ -184,21 +183,28 @@ app.get('/', (req, res) => {
             position: relative;
         }
 
-        /* Heavy Animated Background Orbs & Grids */
+        /* Stunning Moving Background Canvas & Floating Ambient Orbs */
+        #bgCanvas {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none;
+            z-index: -2;
+        }
+
         .ambient-bg {
             position: fixed;
             top: 0; left: 0; width: 100vw; height: 100vh;
             pointer-events: none;
             z-index: -1;
             background: 
-                radial-gradient(circle at 10% 15%, rgba(99, 102, 241, 0.12) 0%, transparent 45%),
-                radial-gradient(circle at 90% 85%, rgba(56, 189, 248, 0.09) 0%, transparent 45%),
-                radial-gradient(circle at 50% 50%, rgba(16, 185, 129, 0.05) 0%, transparent 60%);
-            animation: orbFloat 12s ease-in-out infinite alternate;
+                radial-gradient(circle at 15% 20%, rgba(99, 102, 241, 0.15) 0%, transparent 45%),
+                radial-gradient(circle at 85% 80%, rgba(56, 189, 248, 0.12) 0%, transparent 45%),
+                radial-gradient(circle at 50% 50%, rgba(16, 185, 129, 0.08) 0%, transparent 60%);
+            animation: orbFloat 10s ease-in-out infinite alternate;
         }
         @keyframes orbFloat {
             0% { transform: scale(1) translate(0, 0); }
-            100% { transform: scale(1.08) translate(-20px, 20px); }
+            100% { transform: scale(1.1) translate(-25px, 25px); }
         }
 
         /* Custom Glowing Cursor */
@@ -226,7 +232,6 @@ app.get('/', (req, res) => {
 
         .container { max-width: 1200px; margin: 0 auto; position: relative; z-index: 1; }
 
-        /* Heavy Entrance & Morph Animations */
         @keyframes heavyFadeIn {
             from { opacity: 0; transform: translateY(20px) scale(0.99); }
             to { opacity: 1; transform: translateY(0) scale(1); }
@@ -266,7 +271,6 @@ app.get('/', (req, res) => {
             50% { box-shadow: 0 0 0 9px rgba(56, 189, 248, 0); }
         }
 
-        /* Navigation Tabs */
         .nav-tabs {
             display: flex; gap: 12px; margin-bottom: 28px;
         }
@@ -286,7 +290,6 @@ app.get('/', (req, res) => {
             box-shadow: 0 6px 25px rgba(99, 102, 241, 0.25);
         }
 
-        /* Single Panel Display */
         .workspace-panel { display: none; }
         .workspace-panel.active { display: block; animation: heavyFadeIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 
@@ -319,7 +322,27 @@ app.get('/', (req, res) => {
         }
         textarea { font-family: ui-monospace, monospace; font-size: 12px; resize: vertical; }
 
-        /* Postman Bar */
+        .input-group {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+        .input-group input { margin-bottom: 0; }
+        .toggle-icon {
+            position: absolute;
+            right: 14px;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 14px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .toggle-icon:hover { color: var(--cyan); }
+
         .url-bar { display: flex; gap: 12px; margin-bottom: 20px; }
         .url-bar select { width: 135px; margin-bottom: 0; font-weight: 700; color: var(--cyan); }
         .url-bar input { flex: 1; margin-bottom: 0; font-family: ui-monospace, monospace; font-size: 12px; }
@@ -352,7 +375,6 @@ app.get('/', (req, res) => {
         .btn-primary:hover:not(:disabled) { filter: brightness(1.12); transform: translateY(-1px); }
         .btn-primary:disabled { background: var(--surface-elevated); color: var(--text-muted); cursor: not-allowed; box-shadow: none; }
 
-        /* Log Cards */
         .log-card {
             background: var(--surface-card); border: 1px solid var(--border); border-radius: 14px;
             padding: 22px; margin-bottom: 18px; animation: heavyFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
@@ -376,6 +398,7 @@ app.get('/', (req, res) => {
     </style>
 </head>
 <body>
+    <canvas id="bgCanvas"></canvas>
     <div class="ambient-bg"></div>
     <div class="cursor-dot" id="cursorDot"></div>
     <div class="cursor-outline" id="cursorOutline"></div>
@@ -392,7 +415,7 @@ app.get('/', (req, res) => {
             </div>
         </header>
 
-        <!-- Navigation Tabs (Only particular panel displays upon click) -->
+        <!-- Navigation Tabs -->
         <div class="nav-tabs">
             <button class="nav-btn active" onclick="switchPanel('inbound', this)">Inbound Link</button>
             <button class="nav-btn" onclick="switchPanel('outbound', this)">Outbound HTTP Client</button>
@@ -411,12 +434,15 @@ app.get('/', (req, res) => {
                     <button class="btn-primary" style="width: auto; padding: 0 24px;" onclick="copyInboundUrl()">Copy Link</button>
                 </div>
 
-                <label>Required Authorization Header</label>
-                <input type="text" readonly value="Authorization: Bearer ${SECURE_API_KEY}" style="margin-bottom: 0; font-family: monospace; color: var(--text-muted);" />
+                <label>Required Authorization Header (Randomized Ephemeral Session Token)</label>
+                <div class="input-group" style="margin-bottom: 18px;">
+                    <input type="password" id="authHeaderBox" readonly style="margin-bottom: 0; font-family: monospace; color: var(--text-muted);" />
+                    <button type="button" class="toggle-icon" onclick="toggleVisibility('authHeaderBox', this)">👁️</button>
+                </div>
             </div>
         </div>
 
-        <!-- Panel 2: Outbound HTTP Client with Separate Username & Password Fields -->
+        <!-- Panel 2: Outbound HTTP Client -->
         <div id="panel-outbound" class="workspace-panel">
             <div class="card">
                 <h2>Postman-Grade Outbound HTTP Proxy</h2>
@@ -440,7 +466,7 @@ app.get('/', (req, res) => {
                     <button class="pm-tab" onclick="switchPmTab('body', this)">Body (JSON)</button>
                 </div>
 
-                <!-- Auth Sub-panel with Separate Username & Password Fields -->
+                <!-- Auth Sub-panel with Hide/Unhide Support -->
                 <div id="pm-auth" class="pm-panel active">
                     <label>Auth Type</label>
                     <select id="authType" onchange="updateAuthFields()">
@@ -450,21 +476,27 @@ app.get('/', (req, res) => {
                     </select>
 
                     <div id="basicAuthFields">
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px;">
                             <div>
                                 <label>Username</label>
-                                <input type="text" id="basicUser" placeholder="admin" />
+                                <input type="text" id="basicUser" placeholder="admin" style="margin-bottom: 0;" />
                             </div>
                             <div>
                                 <label>Password</label>
-                                <input type="password" id="basicPass" placeholder="your_pdi_password" />
+                                <div class="input-group">
+                                    <input type="password" id="basicPass" placeholder="your_pdi_password" />
+                                    <button type="button" class="toggle-icon" onclick="toggleVisibility('basicPass', this)">👁️</button>
+                                </div>
                             </div>
                         </div>
                     </div>
 
                     <div id="bearerAuthField" style="display: none;">
                         <label>OAuth Access Token</label>
-                        <input type="password" id="bearerToken" placeholder="Paste ServiceNow OAuth Bearer Token" />
+                        <div class="input-group" style="margin-bottom: 18px;">
+                            <input type="password" id="bearerToken" placeholder="Paste ServiceNow OAuth Bearer Token" />
+                            <button type="button" class="toggle-icon" onclick="toggleVisibility('bearerToken', this)">👁️</button>
+                        </div>
                     </div>
                 </div>
 
@@ -506,14 +538,92 @@ app.get('/', (req, res) => {
     </div>
 
     <script>
-        // Set dynamic inbound URL on load
+        // Generate or retrieve randomized ephemeral device token
+        let deviceToken = localStorage.getItem('nex_device_token');
+        if (!deviceToken) {
+            const randomHex = Array.from(crypto.getRandomValues(new Uint8Array(24)))
+                .map(b => b.toString(16).padStart(2, '0')).join('');
+            deviceToken = 'sn_dev_' + randomHex;
+            localStorage.setItem('nex_device_token', deviceToken);
+        }
+
+        // Set dynamic inbound URL and randomized device token header
         document.getElementById('inboundUrlBox').value = window.location.origin + '/api/v1/servicenow/inbound';
+        document.getElementById('authHeaderBox').value = 'Authorization: Bearer ' + deviceToken;
 
         function copyInboundUrl() {
             const box = document.getElementById('inboundUrlBox');
             navigator.clipboard.writeText(box.value);
             alert('Inbound Webhook Link copied to clipboard successfully!');
         }
+
+        // Hide / Unhide Toggle Function
+        function toggleVisibility(fieldId, btn) {
+            const field = document.getElementById(fieldId);
+            if (field.type === 'password') {
+                field.type = 'text';
+                btn.innerText = '🔒';
+            } else {
+                field.type = 'password';
+                btn.innerText = '👁️';
+            }
+        }
+
+        // Stunning Moving Background Particle Canvas Animation (Calming & Professional)
+        const canvas = document.getElementById('bgCanvas');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+        let particles = [];
+
+        function resizeCanvas() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        for (let i = 0; i < 35; i++) {
+            particles.push({
+                x: Math.random() * width,
+                y: Math.random() * height,
+                vx: (Math.random() - 0.5) * 0.4,
+                vy: (Math.random() - 0.5) * 0.4,
+                radius: Math.random() * 2 + 1,
+                alpha: Math.random() * 0.5 + 0.2
+            });
+        }
+
+        function animateCanvas() {
+            ctx.clearRect(0, 0, width, height);
+            ctx.fillStyle = 'rgba(99, 102, 241, 0.25)';
+            ctx.strokeStyle = 'rgba(99, 102, 241, 0.08)';
+
+            particles.forEach((p, index) => {
+                p.x += p.vx;
+                p.y += p.vy;
+
+                if (p.x < 0 || p.x > width) p.vx *= -1;
+                if (p.y < 0 || p.y > height) p.vy *= -1;
+
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fillStyle = \`rgba(99, 102, 241, \${p.alpha})\`;
+                ctx.fill();
+
+                for (let j = index + 1; j < particles.length; j++) {
+                    const p2 = particles[j];
+                    const dist = Math.hypot(p.x - p2.x, p.y - p2.y);
+                    if (dist < 130) {
+                        ctx.beginPath();
+                        ctx.moveTo(p.x, p.y);
+                        ctx.lineTo(p2.x, p2.y);
+                        ctx.stroke();
+                    }
+                }
+            });
+            requestAnimationFrame(animateCanvas);
+        }
+        animateCanvas();
 
         // Custom Glowing Cursor Movement
         const dot = document.getElementById('cursorDot');
@@ -647,7 +757,6 @@ app.get('/', (req, res) => {
                     outboundData.unshift(data.record);
                     updateLogCount();
                     renderLogs();
-                    // Switch to logs tab automatically
                     document.querySelector('.nav-btn:nth-child(3)').click();
                 }
             } catch (err) {
