@@ -15,9 +15,7 @@ let outboundLogs = [];
 // 1. ServiceNow Inbound REST Endpoint
 app.post('/api/v1/servicenow/inbound', (req, res) => {
     const authHeader = req.headers['authorization'];
-    const deviceToken = req.headers['x-device-token'];
 
-    // Validate either global cryptographic token or device-specific ephemeral session token
     if (!authHeader || (!authHeader.startsWith('Bearer sn_nex_') && !authHeader.startsWith('Bearer sn_dev_'))) {
         return res.status(401).json({ 
             status: 'Error', 
@@ -143,7 +141,7 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
     });
 });
 
-// 3. Masterpiece Frontend (Cyber-Indigo & Obsidian Theme + Stunner Background Canvas Orbs + Hide/Unhide Icons + Device Random Token)
+// 3. Masterpiece Frontend (Heavy Background Aurora + Constellation Mesh + Clean Non-Overlapping Icon Controls)
 app.get('/', (req, res) => {
     res.send(`<!DOCTYPE html>
 <html lang="en">
@@ -155,17 +153,16 @@ app.get('/', (req, res) => {
         :root {
             --bg: #030409;
             --surface: #0a0e1a;
-            --surface-card: #101628;
+            --surface-card: rgba(16, 22, 40, 0.82);
             --surface-elevated: #18223c;
-            --border: rgba(99, 102, 241, 0.18);
-            --border-hover: rgba(99, 102, 241, 0.45);
+            --border: rgba(99, 102, 241, 0.22);
+            --border-hover: rgba(99, 102, 241, 0.5);
             --indigo: #6366f1;
             --indigo-glow: rgba(99, 102, 241, 0.35);
             --cyan: #38bdf8;
             --cyan-glow: rgba(56, 189, 248, 0.3);
             --emerald: #10b981;
             --danger: #f43f5e;
-            --warning: #fbbf24;
             --text-main: #f8fafc;
             --text-muted: #94a3b8;
         }
@@ -183,28 +180,51 @@ app.get('/', (req, res) => {
             position: relative;
         }
 
-        /* Stunning Moving Background Canvas & Floating Ambient Orbs */
+        /* Heavy Multi-Layered Background Animations */
         #bgCanvas {
             position: fixed;
             top: 0; left: 0; width: 100vw; height: 100vh;
             pointer-events: none;
-            z-index: -2;
+            z-index: -3;
         }
 
-        .ambient-bg {
+        .aurora-layer {
             position: fixed;
-            top: 0; left: 0; width: 100vw; height: 100vh;
+            inset: -50%;
+            width: 200%;
+            height: 200%;
+            pointer-events: none;
+            z-index: -2;
+            background: 
+                radial-gradient(circle at 30% 30%, rgba(99, 102, 241, 0.16) 0%, transparent 35%),
+                radial-gradient(circle at 70% 65%, rgba(56, 189, 248, 0.14) 0%, transparent 35%),
+                radial-gradient(circle at 45% 80%, rgba(16, 185, 129, 0.09) 0%, transparent 30%);
+            animation: auroraDrift 18s ease-in-out infinite alternate;
+        }
+
+        .cyber-grid {
+            position: fixed;
+            inset: 0;
             pointer-events: none;
             z-index: -1;
-            background: 
-                radial-gradient(circle at 15% 20%, rgba(99, 102, 241, 0.15) 0%, transparent 45%),
-                radial-gradient(circle at 85% 80%, rgba(56, 189, 248, 0.12) 0%, transparent 45%),
-                radial-gradient(circle at 50% 50%, rgba(16, 185, 129, 0.08) 0%, transparent 60%);
-            animation: orbFloat 10s ease-in-out infinite alternate;
+            background-image: 
+                linear-gradient(to right, rgba(99, 102, 241, 0.04) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(99, 102, 241, 0.04) 1px, transparent 1px);
+            background-size: 48px 48px;
+            mask-image: radial-gradient(ellipse at center, black 40%, transparent 85%);
+            -webkit-mask-image: radial-gradient(ellipse at center, black 40%, transparent 85%);
+            animation: gridPulse 8s ease-in-out infinite alternate;
         }
-        @keyframes orbFloat {
-            0% { transform: scale(1) translate(0, 0); }
-            100% { transform: scale(1.1) translate(-25px, 25px); }
+
+        @keyframes auroraDrift {
+            0% { transform: translate(0, 0) rotate(0deg) scale(1); }
+            50% { transform: translate(-4%, 3%) rotate(4deg) scale(1.05); }
+            100% { transform: translate(4%, -4%) rotate(-4deg) scale(1.08); }
+        }
+
+        @keyframes gridPulse {
+            0% { opacity: 0.5; }
+            100% { opacity: 1; }
         }
 
         /* Custom Glowing Cursor */
@@ -213,12 +233,12 @@ app.get('/', (req, res) => {
             background: var(--cyan); border-radius: 50%;
             pointer-events: none; z-index: 99999;
             transform: translate(-50%, -50%);
-            box-shadow: 0 0 12px var(--cyan);
-            transition: transform 0.1s ease;
+            box-shadow: 0 0 14px var(--cyan);
+            transition: transform 0.08s ease;
         }
         .cursor-outline {
             position: fixed; top: 0; left: 0; width: 40px; height: 40px;
-            border: 1px solid rgba(99, 102, 241, 0.5); border-radius: 50%;
+            border: 1px solid rgba(99, 102, 241, 0.55); border-radius: 50%;
             pointer-events: none; z-index: 99998;
             transform: translate(-50%, -50%);
             transition: width 0.25s ease, height 0.25s ease, border-color 0.25s ease, background 0.25s ease;
@@ -227,7 +247,7 @@ app.get('/', (req, res) => {
         body.hovering .cursor-outline {
             width: 56px; height: 56px;
             border-color: var(--cyan);
-            background: rgba(56, 189, 248, 0.1);
+            background: rgba(56, 189, 248, 0.12);
         }
 
         .container { max-width: 1200px; margin: 0 auto; position: relative; z-index: 1; }
@@ -255,11 +275,12 @@ app.get('/', (req, res) => {
 
         .status-badge {
             display: flex; align-items: center; gap: 9px;
-            background: rgba(99, 102, 241, 0.1);
+            background: rgba(99, 102, 241, 0.12);
             border: 1px solid rgba(99, 102, 241, 0.35);
             color: var(--cyan);
             padding: 7px 16px; border-radius: 999px;
             font-size: 12px; font-weight: 600;
+            backdrop-filter: blur(8px);
             box-shadow: 0 0 20px rgba(99, 102, 241, 0.15);
         }
         .status-dot {
@@ -275,7 +296,8 @@ app.get('/', (req, res) => {
             display: flex; gap: 12px; margin-bottom: 28px;
         }
         .nav-btn {
-            background: var(--surface);
+            background: rgba(10, 14, 26, 0.85);
+            backdrop-filter: blur(8px);
             border: 1px solid var(--border);
             color: var(--text-muted);
             padding: 12px 24px; border-radius: 10px;
@@ -284,7 +306,7 @@ app.get('/', (req, res) => {
         }
         .nav-btn:hover { border-color: var(--border-hover); color: #fff; transform: translateY(-1px); }
         .nav-btn.active {
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.22), rgba(56, 189, 248, 0.1));
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(56, 189, 248, 0.12));
             border-color: var(--indigo);
             color: var(--cyan);
             box-shadow: 0 6px 25px rgba(99, 102, 241, 0.25);
@@ -295,11 +317,12 @@ app.get('/', (req, res) => {
 
         .card {
             background: var(--surface-card);
+            backdrop-filter: blur(14px);
             border: 1px solid var(--border);
             border-radius: 16px;
             padding: 30px;
             margin-bottom: 24px;
-            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.45);
             transition: border-color 0.3s ease;
         }
         .card:hover { border-color: var(--border-hover); }
@@ -322,26 +345,56 @@ app.get('/', (req, res) => {
         }
         textarea { font-family: ui-monospace, monospace; font-size: 12px; resize: vertical; }
 
-        .input-group {
-            position: relative;
+        /* Clean Separated Input + Eye Icon Wrapper (Zero Text Overlap) */
+        .secret-field-wrapper {
             display: flex;
-            align-items: center;
+            align-items: stretch;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            overflow: hidden;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
         }
-        .input-group input { margin-bottom: 0; }
-        .toggle-icon {
-            position: absolute;
-            right: 14px;
-            background: none;
+        .secret-field-wrapper:focus-within {
+            border-color: var(--indigo);
+            box-shadow: 0 0 0 3px var(--indigo-glow);
+        }
+        .secret-field-wrapper input {
+            flex: 1;
             border: none;
+            background: transparent;
+            margin-bottom: 0;
+            padding: 12px 14px;
+            min-width: 0;
+        }
+        .secret-field-wrapper input:focus {
+            box-shadow: none;
+        }
+        .eye-btn {
+            background: rgba(24, 34, 60, 0.6);
+            border: none;
+            border-left: 1px solid var(--border);
             color: var(--text-muted);
-            cursor: pointer;
-            font-size: 14px;
-            padding: 0;
+            padding: 0 14px;
             display: flex;
             align-items: center;
             justify-content: center;
+            cursor: pointer;
+            transition: color 0.2s ease, background 0.2s ease;
         }
-        .toggle-icon:hover { color: var(--cyan); }
+        .eye-btn:hover {
+            color: var(--cyan);
+            background: rgba(99, 102, 241, 0.15);
+        }
+        .eye-btn svg {
+            width: 16px;
+            height: 16px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
 
         .url-bar { display: flex; gap: 12px; margin-bottom: 20px; }
         .url-bar select { width: 135px; margin-bottom: 0; font-weight: 700; color: var(--cyan); }
@@ -376,7 +429,8 @@ app.get('/', (req, res) => {
         .btn-primary:disabled { background: var(--surface-elevated); color: var(--text-muted); cursor: not-allowed; box-shadow: none; }
 
         .log-card {
-            background: var(--surface-card); border: 1px solid var(--border); border-radius: 14px;
+            background: var(--surface-card); backdrop-filter: blur(12px);
+            border: 1px solid var(--border); border-radius: 14px;
             padding: 22px; margin-bottom: 18px; animation: heavyFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
         .log-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; font-size: 12px; }
@@ -393,13 +447,15 @@ app.get('/', (req, res) => {
         }
         .empty {
             text-align: center; padding: 60px; color: var(--text-muted); font-size: 13px;
-            background: var(--surface-card); border: 1px dashed var(--border); border-radius: 14px;
+            background: var(--surface-card); backdrop-filter: blur(12px);
+            border: 1px dashed var(--border); border-radius: 14px;
         }
     </style>
 </head>
 <body>
     <canvas id="bgCanvas"></canvas>
-    <div class="ambient-bg"></div>
+    <div class="aurora-layer"></div>
+    <div class="cyber-grid"></div>
     <div class="cursor-dot" id="cursorDot"></div>
     <div class="cursor-outline" id="cursorOutline"></div>
 
@@ -424,20 +480,22 @@ app.get('/', (req, res) => {
 
         <!-- Panel 1: Inbound Link Only -->
         <div id="panel-inbound" class="workspace-panel active">
-            <div class="card" style="max-width: 700px;">
+            <div class="card" style="max-width: 720px;">
                 <h2>Inbound Webhook Endpoint</h2>
-                <p class="sub">Provide this exact website link to your ServiceNow instance (via REST Message or Business Rule) to ingest payloads.</p>
+                <p class="sub">Provide this exact website link and device-specific session token to your ServiceNow instance to ingest payloads.</p>
 
                 <label>Secured Inbound Webhook URL</label>
-                <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                <div style="display: flex; gap: 10px; margin-bottom: 22px;">
                     <input type="text" id="inboundUrlBox" readonly style="margin-bottom: 0; font-family: monospace; color: var(--cyan);" />
                     <button class="btn-primary" style="width: auto; padding: 0 24px;" onclick="copyInboundUrl()">Copy Link</button>
                 </div>
 
-                <label>Required Authorization Header (Randomized Ephemeral Session Token)</label>
-                <div class="input-group" style="margin-bottom: 18px;">
-                    <input type="password" id="authHeaderBox" readonly style="margin-bottom: 0; font-family: monospace; color: var(--text-muted);" />
-                    <button type="button" class="toggle-icon" onclick="toggleVisibility('authHeaderBox', this)">👁️</button>
+                <label>Required Authorization Header (Device-Specific Ephemeral Bearer Token)</label>
+                <div class="secret-field-wrapper">
+                    <input type="password" id="authHeaderBox" readonly style="font-family: monospace; color: var(--text-muted);" />
+                    <button type="button" class="eye-btn" title="Show/Hide Token" onclick="toggleVisibility('authHeaderBox', this)">
+                        <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    </button>
                 </div>
             </div>
         </div>
@@ -466,7 +524,7 @@ app.get('/', (req, res) => {
                     <button class="pm-tab" onclick="switchPmTab('body', this)">Body (JSON)</button>
                 </div>
 
-                <!-- Auth Sub-panel with Hide/Unhide Support -->
+                <!-- Auth Sub-panel -->
                 <div id="pm-auth" class="pm-panel active">
                     <label>Auth Type</label>
                     <select id="authType" onchange="updateAuthFields()">
@@ -476,16 +534,18 @@ app.get('/', (req, res) => {
                     </select>
 
                     <div id="basicAuthFields">
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                             <div>
                                 <label>Username</label>
                                 <input type="text" id="basicUser" placeholder="admin" style="margin-bottom: 0;" />
                             </div>
                             <div>
                                 <label>Password</label>
-                                <div class="input-group">
+                                <div class="secret-field-wrapper">
                                     <input type="password" id="basicPass" placeholder="your_pdi_password" />
-                                    <button type="button" class="toggle-icon" onclick="toggleVisibility('basicPass', this)">👁️</button>
+                                    <button type="button" class="eye-btn" title="Show/Hide Password" onclick="toggleVisibility('basicPass', this)">
+                                        <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -493,9 +553,11 @@ app.get('/', (req, res) => {
 
                     <div id="bearerAuthField" style="display: none;">
                         <label>OAuth Access Token</label>
-                        <div class="input-group" style="margin-bottom: 18px;">
+                        <div class="secret-field-wrapper">
                             <input type="password" id="bearerToken" placeholder="Paste ServiceNow OAuth Bearer Token" />
-                            <button type="button" class="toggle-icon" onclick="toggleVisibility('bearerToken', this)">👁️</button>
+                            <button type="button" class="eye-btn" title="Show/Hide Token" onclick="toggleVisibility('bearerToken', this)">
+                                <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -557,23 +619,27 @@ app.get('/', (req, res) => {
             alert('Inbound Webhook Link copied to clipboard successfully!');
         }
 
-        // Hide / Unhide Toggle Function
+        // Clean SVG Eye / Eye-Off Toggle Function
+        const eyeOpenSvg = '<svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+        const eyeOffSvg = '<svg viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+
         function toggleVisibility(fieldId, btn) {
             const field = document.getElementById(fieldId);
             if (field.type === 'password') {
                 field.type = 'text';
-                btn.innerText = '🔒';
+                btn.innerHTML = eyeOffSvg;
             } else {
                 field.type = 'password';
-                btn.innerText = '👁️';
+                btn.innerHTML = eyeOpenSvg;
             }
         }
 
-        // Stunning Moving Background Particle Canvas Animation (Calming & Professional)
+        // Heavy Interactive Neural Constellation & Data Pulse Background Animation
         const canvas = document.getElementById('bgCanvas');
         const ctx = canvas.getContext('2d');
         let width, height;
-        let particles = [];
+        let nodes = [];
+        let pointer = { x: -1000, y: -1000 };
 
         function resizeCanvas() {
             width = canvas.width = window.innerWidth;
@@ -582,45 +648,79 @@ app.get('/', (req, res) => {
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
 
-        for (let i = 0; i < 35; i++) {
-            particles.push({
+        window.addEventListener('mousemove', e => {
+            pointer.x = e.clientX;
+            pointer.y = e.clientY;
+        });
+
+        const NODE_COUNT = 65;
+        for (let i = 0; i < NODE_COUNT; i++) {
+            nodes.push({
                 x: Math.random() * width,
                 y: Math.random() * height,
-                vx: (Math.random() - 0.5) * 0.4,
-                vy: (Math.random() - 0.5) * 0.4,
-                radius: Math.random() * 2 + 1,
-                alpha: Math.random() * 0.5 + 0.2
+                vx: (Math.random() - 0.5) * 0.55,
+                vy: (Math.random() - 0.5) * 0.55,
+                radius: Math.random() * 2.2 + 1.2,
+                pulsePhase: Math.random() * Math.PI * 2,
+                isCyan: Math.random() > 0.65
             });
         }
 
         function animateCanvas() {
             ctx.clearRect(0, 0, width, height);
-            ctx.fillStyle = 'rgba(99, 102, 241, 0.25)';
-            ctx.strokeStyle = 'rgba(99, 102, 241, 0.08)';
 
-            particles.forEach((p, index) => {
-                p.x += p.vx;
-                p.y += p.vy;
+            for (let i = 0; i < nodes.length; i++) {
+                const n = nodes[i];
+                n.x += n.vx;
+                n.y += n.vy;
+                n.pulsePhase += 0.03;
 
-                if (p.x < 0 || p.x > width) p.vx *= -1;
-                if (p.y < 0 || p.y > height) p.vy *= -1;
+                if (n.x < 0 || n.x > width) n.vx *= -1;
+                if (n.y < 0 || n.y > height) n.vy *= -1;
 
+                // Subtle magnetic drift toward cursor
+                const dxMouse = pointer.x - n.x;
+                const dyMouse = pointer.y - n.y;
+                const distMouse = Math.hypot(dxMouse, dyMouse);
+                if (distMouse < 220) {
+                    n.x += dxMouse * 0.004;
+                    n.y += dyMouse * 0.004;
+                }
+
+                const glowAlpha = 0.35 + Math.sin(n.pulsePhase) * 0.25;
                 ctx.beginPath();
-                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-                ctx.fillStyle = \`rgba(99, 102, 241, \${p.alpha})\`;
+                ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
+                ctx.fillStyle = n.isCyan 
+                    ? \`rgba(56, 189, 248, \${glowAlpha})\` 
+                    : \`rgba(99, 102, 241, \${glowAlpha + 0.1})\`;
                 ctx.fill();
 
-                for (let j = index + 1; j < particles.length; j++) {
-                    const p2 = particles[j];
-                    const dist = Math.hypot(p.x - p2.x, p.y - p2.y);
-                    if (dist < 130) {
+                // Connect nearby nodes
+                for (let j = i + 1; j < nodes.length; j++) {
+                    const n2 = nodes[j];
+                    const dist = Math.hypot(n.x - n2.x, n.y - n2.y);
+                    if (dist < 155) {
+                        const lineAlpha = (1 - dist / 155) * 0.22;
                         ctx.beginPath();
-                        ctx.moveTo(p.x, p.y);
-                        ctx.lineTo(p2.x, p2.y);
+                        ctx.moveTo(n.x, n.y);
+                        ctx.lineTo(n2.x, n2.y);
+                        ctx.strokeStyle = \`rgba(99, 102, 241, \${lineAlpha})\`;
+                        ctx.lineWidth = 1;
                         ctx.stroke();
                     }
                 }
-            });
+
+                // Connect nodes to cursor
+                if (distMouse < 180) {
+                    const mouseLineAlpha = (1 - distMouse / 180) * 0.35;
+                    ctx.beginPath();
+                    ctx.moveTo(n.x, n.y);
+                    ctx.lineTo(pointer.x, pointer.y);
+                    ctx.strokeStyle = \`rgba(56, 189, 248, \${mouseLineAlpha})\`;
+                    ctx.lineWidth = 1.1;
+                    ctx.stroke();
+                }
+            }
             requestAnimationFrame(animateCanvas);
         }
         animateCanvas();
@@ -645,10 +745,13 @@ app.get('/', (req, res) => {
         }
         renderCursor();
 
-        document.querySelectorAll('button, input, select, textarea').forEach(el => {
-            el.addEventListener('mouseenter', () => document.body.classList.add('hovering'));
-            el.addEventListener('mouseleave', () => document.body.classList.remove('hovering'));
-        });
+        function bindHoverListeners() {
+            document.querySelectorAll('button, input, select, textarea').forEach(el => {
+                el.addEventListener('mouseenter', () => document.body.classList.add('hovering'));
+                el.addEventListener('mouseleave', () => document.body.classList.remove('hovering'));
+            });
+        }
+        bindHoverListeners();
 
         // Single Panel Display Switcher
         function switchPanel(panelId, btn) {
@@ -691,6 +794,7 @@ app.get('/', (req, res) => {
                 <button type="button" class="icon-btn" onclick="this.parentElement.remove()">&times;</button>
             \`;
             document.getElementById('headersList').appendChild(row);
+            bindHoverListeners();
         }
 
         function toggleBodyState() {
