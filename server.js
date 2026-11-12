@@ -1,3 +1,5 @@
+// 
+
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -7,16 +9,49 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(bodyParser.json());
+app.use(bodyParser.json({ limit: '1mb' }));
+
+// ---- Settings (can be changed on Render under Environment, no code edit needed) ----
+const MAX_LOGS = 200;                                   // keep only the latest 200 logs per direction
+const INBOUND_TOKEN = process.env.INBOUND_TOKEN || '';  // if set, ONLY this exact token is accepted
+const ALLOWED_HOSTS = (process.env.ALLOWED_HOSTS || '.service-now.com')
+    .split(',').map(h => h.trim().toLowerCase()).filter(Boolean);
+const OUTBOUND_TIMEOUT_MS = 30000;
 
 let inboundLogs = [];
 let outboundLogs = [];
+
+function addLog(list, entry) {
+    list.unshift(entry);
+    if (list.length > MAX_LOGS) list.length = MAX_LOGS;
+}
+
+function safeParse(text) {
+    if (!text) return null;
+    try { return JSON.parse(text); } catch { return text; }
+}
+
+// Outbound proxy safety: only https URLs on allowed hosts (stops strangers using your server as an open proxy)
+function isAllowedUrl(rawUrl) {
+    try {
+        const u = new URL(rawUrl);
+        if (u.protocol !== 'https:') return false;
+        const host = u.hostname.toLowerCase();
+        return ALLOWED_HOSTS.some(rule =>
+            rule === '*' || (rule.startsWith('.') ? host.endsWith(rule) : host === rule)
+        );
+    } catch { return false; }
+}
 
 // 1. ServiceNow Inbound REST Endpoint
 app.post('/api/v1/servicenow/inbound', (req, res) => {
     const authHeader = req.headers['authorization'];
 
-    if (!authHeader || (!authHeader.startsWith('Bearer sn_nex_') && !authHeader.startsWith('Bearer sn_dev_'))) {
+    const tokenOk = INBOUND_TOKEN
+        ? authHeader === 'Bearer ' + INBOUND_TOKEN
+        : (authHeader && (authHeader.startsWith('Bearer sn_nex_') || authHeader.startsWith('Bearer sn_dev_')));
+
+    if (!tokenOk) {
         return res.status(401).json({ 
             status: 'Error', 
             message: 'Authentication failed: The provided Bearer token in the Authorization header is invalid or missing.' 
@@ -24,7 +59,7 @@ app.post('/api/v1/servicenow/inbound', (req, res) => {
     }
 
     const syncId = "SN-INB-" + Math.floor(100000 + Math.random() * 900000);
-    const timestamp = new Date().toLocaleTimeString();
+    const timestamp = new Date().toISOString();
 
     const inboundEntry = {
         id: syncId,
@@ -37,7 +72,7 @@ app.post('/api/v1/servicenow/inbound', (req, res) => {
         payload: req.body
     };
 
-    inboundLogs.unshift(inboundEntry);
+    addLog(inboundLogs, inboundEntry);
     console.log(`[ServiceNow Inbound] ID: ${syncId}`);
 
     res.status(200).json({
@@ -58,8 +93,15 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
         });
     }
 
+    if (!isAllowedUrl(url)) {
+        return res.status(400).json({
+            status: 'Error',
+            message: 'Blocked: only https URLs on these hosts are allowed: ' + ALLOWED_HOSTS.join(', ') + '. To change this, set the ALLOWED_HOSTS environment variable on Render.'
+        });
+    }
+
     const syncId = "SN-OUT-" + Math.floor(100000 + Math.random() * 900000);
-    const timestamp = new Date().toLocaleTimeString();
+    const timestamp = new Date().toISOString();
     const startTime = Date.now();
 
     const requestHeaders = {
@@ -96,7 +138,11 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
     let diagnosticError = null;
 
     try {
-        const response = await fetch(url, fetchOptions);
+        const response = await fetch(url, {
+            ...fetchOptions,
+            redirect: 'manual',
+            signal: AbortSignal.timeout(OUTBOUND_TIMEOUT_MS)
+        });
         durationMs = Date.now() - startTime;
         responseStatus = response.status;
         statusText = response.statusText;
@@ -110,7 +156,7 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
     } catch (error) {
         durationMs = Date.now() - startTime;
         responseStatus = 503;
-        statusText = 'Network DNS or TLS Failure';
+        statusText = error.name === 'TimeoutError' ? 'Request Timed Out' : 'Network DNS or TLS Failure';
         diagnosticError = error.message;
         responseData = {
             error: error.message,
@@ -128,11 +174,11 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
         durationMs,
         timestamp,
         diagnosticError,
-        requestPayload: fetchOptions.body ? JSON.parse(fetchOptions.body) : null,
+        requestPayload: safeParse(fetchOptions.body),
         responsePayload: responseData
     };
 
-    outboundLogs.unshift(outboundEntry);
+    addLog(outboundLogs, outboundEntry);
     console.log(`[ServiceNow Outbound] ${method.toUpperCase()} ${url} -> ${responseStatus} (${durationMs}ms)`);
 
     res.status(200).json({
@@ -144,6 +190,16 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
 // 2b. Logs endpoint so the website can read what the server saved
 app.get('/api/v1/servicenow/logs', (req, res) => {
     res.json({ inbound: inboundLogs, outbound: outboundLogs });
+});
+
+app.delete('/api/v1/servicenow/logs', (req, res) => {
+    inboundLogs = [];
+    outboundLogs = [];
+    res.json({ status: 'Cleared' });
+});
+
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok', uptimeSeconds: Math.round(process.uptime()) });
 });
 
 // 3. Masterpiece Frontend (Heavy Background Aurora + Constellation Mesh + Clean Non-Overlapping Icon Controls)
@@ -480,7 +536,7 @@ app.get('/', (req, res) => {
         <div class="nav-tabs">
             <button class="nav-btn active" onclick="switchPanel('inbound', this)">Inbound Link</button>
             <button class="nav-btn" onclick="switchPanel('outbound', this)">Outbound HTTP Client</button>
-            <button class="nav-btn" onclick="switchPanel('logs', this)">Execution Logs (<span id="logCount">0</span>)</button>
+            <button class="nav-btn" id="tabLogs" onclick="switchPanel('logs', this)">Execution Logs (<span id="logCount">0</span>)</button>
         </div>
 
         <!-- Panel 1: Inbound Link Only -->
@@ -597,6 +653,7 @@ app.get('/', (req, res) => {
             <div class="card" style="background: transparent; border: none; padding: 0; box-shadow: none;">
                 <h2>Execution History & Diagnostics</h2>
                 <p class="sub">Real-time audit trail of inbound webhook receptions and outbound proxy responses.</p>
+                <button type="button" class="nav-btn" style="padding: 8px 16px; font-size: 12px; margin-bottom: 18px;" onclick="clearLogs()">Clear Logs</button>
                 <div id="logsContainer">
                     <div class="empty">No execution logs recorded in this session.</div>
                 </div>
@@ -819,11 +876,39 @@ app.get('/', (req, res) => {
         let sendingRequest = false;
 
         let lastLogSignature = '';
+        // Makes any text safe to show inside HTML (stops a payload from running code in the browser)
+        function esc(value) {
+            return String(value === undefined || value === null ? '' : value)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        // Shows the server's UTC time in the viewer's own local time
+        function formatTime(iso) {
+            const d = new Date(iso);
+            return isNaN(d) ? esc(iso) : esc(d.toLocaleString());
+        }
+
+        async function clearLogs() {
+            if (!confirm('Delete all logs from the server?')) return;
+            try {
+                await fetch('/api/v1/servicenow/logs', { method: 'DELETE' });
+                lastLogSignature = '';
+                inboundData = [];
+                outboundData = [];
+                updateLogCount();
+                renderLogs();
+            } catch (e) { console.error(e); }
+        }
+
         async function loadServerLogs() {
+            if (document.hidden) return;
             try {
                 const res = await fetch('/api/v1/servicenow/logs');
                 const data = await res.json();
-                const signature = data.inbound.length + '-' + data.outbound.length;
+                const signature = (data.inbound[0] ? data.inbound[0].id : '') + '|' +
+                                  (data.outbound[0] ? data.outbound[0].id : '') + '|' +
+                                  data.inbound.length + '|' + data.outbound.length;
                 if (signature === lastLogSignature) return;
                 lastLogSignature = signature;
                 inboundData = data.inbound;
@@ -883,7 +968,7 @@ app.get('/', (req, res) => {
                     outboundData.unshift(data.record);
                     updateLogCount();
                     renderLogs();
-                    document.querySelector('.nav-btn:nth-child(3)').click();
+                    document.getElementById('tabLogs').click();
                 }
             } catch (err) {
                 console.error(err);
@@ -896,7 +981,8 @@ app.get('/', (req, res) => {
 
         function renderLogs() {
             const container = document.getElementById('logsContainer');
-            const allLogs = [...outboundData, ...inboundData];
+            const allLogs = [...outboundData, ...inboundData]
+                .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
             if (!allLogs.length) {
                 container.innerHTML = \`<div class="empty">No execution logs recorded in this session.</div>\`;
@@ -910,11 +996,11 @@ app.get('/', (req, res) => {
                             <div class="log-meta">
                                 <div>
                                     <span class="badge">SERVICENOW INBOUND</span>
-                                    <strong style="margin-left: 8px; color: #fff;">\${item.id}</strong>
+                                    <strong style="margin-left: 8px; color: #fff;">\${esc(item.id)}</strong>
                                 </div>
-                                <span style="color: var(--text-muted);">\${item.timestamp}</span>
+                                <span style="color: var(--text-muted);">\${formatTime(item.timestamp)}</span>
                             </div>
-                            <pre>\${JSON.stringify(item.payload, null, 2)}</pre>
+                            <pre>\${esc(JSON.stringify(item.payload, null, 2))}</pre>
                         </div>
                     \`;
                 } else {
@@ -923,15 +1009,15 @@ app.get('/', (req, res) => {
                         <div class="log-card">
                             <div class="log-meta">
                                 <div>
-                                    <span class="badge">\${item.method}</span>
-                                    <span class="badge \${isSuccess ? 'badge-ok' : 'badge-err'}" style="margin-left: 6px;">\${item.status}</span>
-                                    <span style="margin-left: 8px; color: var(--text-muted); font-size: 11px;">\${item.durationMs} ms</span>
+                                    <span class="badge">\${esc(item.method)}</span>
+                                    <span class="badge \${isSuccess ? 'badge-ok' : 'badge-err'}" style="margin-left: 6px;">\${esc(item.status)}</span>
+                                    <span style="margin-left: 8px; color: var(--text-muted); font-size: 11px;">\${esc(item.durationMs)} ms</span>
                                 </div>
-                                <span style="color: var(--text-muted);">\${item.timestamp}</span>
+                                <span style="color: var(--text-muted);">\${formatTime(item.timestamp)}</span>
                             </div>
-                            <div style="font-family: monospace; font-size: 12px; color: var(--cyan); margin-bottom: 8px; word-break: break-all;">\${item.url}</div>
+                            <div style="font-family: monospace; font-size: 12px; color: var(--cyan); margin-bottom: 8px; word-break: break-all;">\${esc(item.url)}</div>
                             <label style="margin-top: 8px;">Response Payload</label>
-                            <pre>\${JSON.stringify(item.responsePayload, null, 2)}</pre>
+                            <pre>\${esc(JSON.stringify(item.responsePayload, null, 2))}</pre>
                         </div>
                     \`;
                 }
@@ -940,6 +1026,18 @@ app.get('/', (req, res) => {
     </script>
 </body>
 </html>`);
+});
+
+// Friendly JSON errors (for example, when the request body is not valid JSON)
+app.use((err, req, res, next) => {
+    if (err && err.type === 'entity.parse.failed') {
+        return res.status(400).json({
+            status: 'Error',
+            message: 'Invalid JSON body. Send valid JSON with the header Content-Type: application/json.'
+        });
+    }
+    console.error(err);
+    res.status(500).json({ status: 'Error', message: 'Internal server error.' });
 });
 
 app.listen(PORT, () => {
