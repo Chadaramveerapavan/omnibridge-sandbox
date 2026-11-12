@@ -141,6 +141,11 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
     });
 });
 
+// 2b. Logs endpoint so the website can read what the server saved
+app.get('/api/v1/servicenow/logs', (req, res) => {
+    res.json({ inbound: inboundLogs, outbound: outboundLogs });
+});
+
 // 3. Masterpiece Frontend (Heavy Background Aurora + Constellation Mesh + Clean Non-Overlapping Icon Controls)
 app.get('/', (req, res) => {
     res.send(`<!DOCTYPE html>
@@ -812,6 +817,23 @@ app.get('/', (req, res) => {
         }
 
         let sendingRequest = false;
+
+        let lastLogSignature = '';
+        async function loadServerLogs() {
+            try {
+                const res = await fetch('/api/v1/servicenow/logs');
+                const data = await res.json();
+                const signature = data.inbound.length + '-' + data.outbound.length;
+                if (signature === lastLogSignature) return;
+                lastLogSignature = signature;
+                inboundData = data.inbound;
+                outboundData = data.outbound;
+                updateLogCount();
+                renderLogs();
+            } catch (e) { console.error(e); }
+        }
+        loadServerLogs();
+        setInterval(loadServerLogs, 3000);
 
         async function sendOutboundRequest() {
             if (sendingRequest) return;
