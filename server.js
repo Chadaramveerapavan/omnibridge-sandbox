@@ -16,14 +16,14 @@ app.use(bodyParser.json());
 let inboundLogs = [];
 let outboundLogs = [];
 
-// 1. ServiceNow Inbound REST Endpoint (ServiceNow Business Rule / REST Message -> Hub)
+// 1. ServiceNow Inbound REST Endpoint
 app.post('/api/v1/servicenow/inbound', (req, res) => {
     const authHeader = req.headers['authorization'];
     
     if (!authHeader || authHeader !== `Bearer ${SECURE_API_KEY}`) {
         return res.status(401).json({ 
             status: 'Error', 
-            message: 'Unauthorized: Invalid or missing Bearer token' 
+            message: 'Authentication failed: The provided Bearer token is invalid or missing.' 
         });
     }
 
@@ -46,24 +46,26 @@ app.post('/api/v1/servicenow/inbound', (req, res) => {
 
     res.status(200).json({
         status: 'Success',
-        message: 'Inbound ServiceNow payload received',
+        message: 'Inbound ServiceNow payload successfully ingested.',
         record: inboundEntry
     });
 });
 
-// 2. Postman-Style Outbound HTTP Proxy (Hub -> ServiceNow Table API / Scripted REST API)
+// 2. Postman-Style Outbound HTTP Proxy with Diagnostic Precision
 app.post('/api/v1/servicenow/outbound', async (req, res) => {
     const { method, url, authType, authValue, headers, body } = req.body;
 
     if (!url || !method) {
-        return res.status(400).json({ status: 'Error', message: 'HTTP Method and ServiceNow Endpoint URL are required.' });
+        return res.status(400).json({ 
+            status: 'Error', 
+            message: 'Validation Error: Both HTTP Method and Target Endpoint URL are required.' 
+        });
     }
 
     const syncId = "SN-OUT-" + Math.floor(100000 + Math.random() * 900000);
     const timestamp = new Date().toLocaleTimeString();
     const startTime = Date.now();
 
-    // Build Request Headers
     const requestHeaders = {
         'Accept': 'application/json',
         'Content-Type': 'application/json'
@@ -94,6 +96,7 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
     let statusText = 'OK';
     let responseData = null;
     let durationMs = 0;
+    let diagnosticError = null;
 
     try {
         const response = await fetch(url, fetchOptions);
@@ -105,15 +108,16 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
         try {
             responseData = JSON.parse(rawText);
         } catch {
-            responseData = rawText || { message: 'No response body returned' };
+            responseData = rawText || { message: 'Response body returned empty or non-JSON format.' };
         }
     } catch (error) {
         durationMs = Date.now() - startTime;
-        responseStatus = 502;
-        statusText = 'Connection Error';
+        responseStatus = 503;
+        statusText = 'Network DNS or TLS Failure';
+        diagnosticError = error.message;
         responseData = {
             error: error.message,
-            hint: 'Ensure your ServiceNow PDI is awake and the instance URL is reachable.'
+            diagnosticAdvice: 'Verify that your ServiceNow Personal Developer Instance (PDI) is active, online, and not hibernating. Check firewall rules and ensure the URL prefix matches standard instance routing.'
         };
     }
 
@@ -126,6 +130,7 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
         statusCode: responseStatus,
         durationMs,
         timestamp,
+        diagnosticError,
         requestPayload: fetchOptions.body ? JSON.parse(fetchOptions.body) : null,
         responsePayload: responseData
     };
@@ -139,404 +144,263 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
     });
 });
 
-// 3. Clean ServiceNow Integration Hub Frontend
+// 3. Elite Masterpiece Frontend (Classic Obsidian-Emerald Theme + Smooth Background & Cursor Animations)
 app.get('/', (req, res) => {
     res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NexRelay | ServiceNow Integration Hub</title>
+    <title>NexRelay | Masterpiece ServiceNow Integration Hub</title>
     <style>
         :root {
-            --bg: #070b12;
-            --surface: #0f1623;
-            --surface-elevated: #161f30;
-            --border: rgba(148, 163, 184, 0.14);
-            --sn-green: #62d84e;
-            --sn-green-glow: rgba(98, 216, 78, 0.18);
-            --accent: #38bdf8;
-            --danger: #f87171;
+            --bg: #030706;
+            --surface: #0a1310;
+            --surface-card: #0f1c18;
+            --surface-elevated: #162622;
+            --border: rgba(16, 185, 129, 0.15);
+            --border-hover: rgba(16, 185, 129, 0.35);
+            --emerald: #10b981;
+            --emerald-glow: rgba(16, 185, 129, 0.25);
+            --emerald-bright: #34d399;
+            --accent-blue: #38bdf8;
+            --danger: #f43f5e;
             --warning: #fbbf24;
-            --text: #f1f5f9;
-            --text-dim: #94a3b8;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
         }
-        * { box-sizing: border-box; }
+
+        * { box-sizing: border-box; cursor: none !important; }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
             background: var(--bg);
-            color: var(--text);
+            color: var(--text-main);
             margin: 0;
-            padding: 28px 20px;
+            padding: 36px 24px;
             min-height: 100vh;
-            line-height: 1.5;
+            overflow-x: hidden;
+            position: relative;
         }
-        .container { max-width: 1160px; margin: 0 auto; }
 
-        /* Smooth Entrance Animations */
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(14px); }
+        /* Ambient Dynamic Background Glow Animation */
+        .ambient-bg {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none;
+            z-index: -1;
+            background: 
+                radial-gradient(circle at 15% 20%, rgba(16, 185, 129, 0.07) 0%, transparent 40%),
+                radial-gradient(circle at 85% 80%, rgba(56, 189, 248, 0.05) 0%, transparent 45%);
+            animation: ambientShift 14s ease-in-out infinite alternate;
+        }
+        @keyframes ambientShift {
+            0% { transform: scale(1) translate(0, 0); }
+            100% { transform: scale(1.06) translate(-15px, 15px); }
+        }
+
+        /* Custom Pro Cursor */
+        .cursor-dot {
+            position: fixed; top: 0; left: 0; width: 6px; height: 6px;
+            background: var(--emerald-bright); border-radius: 50%;
+            pointer-events: none; z-index: 99999;
+            transform: translate(-50%, -50%);
+            transition: transform 0.1s ease, background 0.2s ease;
+            box-shadow: 0 0 10px var(--emerald);
+        }
+        .cursor-outline {
+            position: fixed; top: 0; left: 0; width: 36px; height: 36px;
+            border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 50%;
+            pointer-events: none; z-index: 99998;
+            transform: translate(-50%, -50%);
+            transition: width 0.25s ease, height 0.25s ease, border-color 0.25s ease, background 0.25s ease;
+            background: rgba(16, 185, 129, 0.02);
+        }
+        body.hovering .cursor-outline {
+            width: 52px; height: 52px;
+            border-color: var(--emerald);
+            background: rgba(16, 185, 129, 0.08);
+        }
+
+        .container { max-width: 1200px; margin: 0 auto; position: relative; z-index: 1; }
+
+        /* Smooth Entrance */
+        @keyframes eliteFadeUp {
+            from { opacity: 0; transform: translateY(18px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        @keyframes pulseGlow {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(98, 216, 78, 0.5); }
-            50% { box-shadow: 0 0 0 8px rgba(98, 216, 78, 0); }
-        }
-        @keyframes flowLine {
-            to { stroke-dashoffset: -24; }
-        }
+        .animate-in { animation: eliteFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 
         header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding-bottom: 20px;
+            padding-bottom: 24px;
             border-bottom: 1px solid var(--border);
-            margin-bottom: 24px;
-            animation: slideUp 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+            margin-bottom: 28px;
         }
         .brand h1 {
-            margin: 0;
-            font-size: 22px;
-            font-weight: 700;
-            letter-spacing: -0.4px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
+            margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;
+            display: flex; align-items: center; gap: 10px; color: #fff;
         }
-        .brand h1 span { color: var(--sn-green); }
-        .brand p { margin: 4px 0 0 0; font-size: 12px; color: var(--text-dim); }
+        .brand h1 span { color: var(--emerald); text-shadow: 0 0 20px var(--emerald-glow); }
+        .brand p { margin: 6px 0 0 0; font-size: 13px; color: var(--text-muted); }
 
         .status-badge {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            background: rgba(98, 216, 78, 0.1);
-            border: 1px solid rgba(98, 216, 78, 0.3);
-            color: var(--sn-green);
-            padding: 6px 14px;
-            border-radius: 999px;
-            font-size: 12px;
-            font-weight: 600;
+            display: flex; align-items: center; gap: 9px;
+            background: rgba(16, 185, 129, 0.08);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: var(--emerald-bright);
+            padding: 7px 16px; border-radius: 999px;
+            font-size: 12px; font-weight: 600;
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.1);
         }
         .status-dot {
-            width: 8px;
-            height: 8px;
-            background: var(--sn-green);
-            border-radius: 50%;
-            animation: pulseGlow 2.2s infinite;
+            width: 8px; height: 8px; background: var(--emerald); border-radius: 50%;
+            animation: pulseDot 2s infinite;
+        }
+        @keyframes pulseDot {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            50% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
         }
 
-        /* Smooth Architecture Flow Banner */
-        .flow-banner {
-            background: linear-gradient(180deg, var(--surface) 0%, rgba(15, 22, 35, 0.6) 100%);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 20px 32px;
-            margin-bottom: 24px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            animation: slideUp 0.55s cubic-bezier(0.16, 1, 0.3, 1);
+        /* Navigation Bar (Single Active Tab View) */
+        .nav-tabs {
+            display: flex; gap: 10px; margin-bottom: 28px;
         }
-        .flow-node {
-            background: var(--surface-elevated);
-            border: 1px solid var(--border);
-            padding: 12px 20px;
-            border-radius: 10px;
-            text-align: center;
-            min-width: 185px;
-            transition: transform 0.25s ease, border-color 0.25s ease;
-        }
-        .flow-node:hover {
-            transform: translateY(-2px);
-            border-color: var(--sn-green);
-        }
-        .flow-node strong { display: block; font-size: 13px; color: #fff; }
-        .flow-node span { font-size: 11px; color: var(--text-dim); }
-        .flow-node.hub {
-            border-color: rgba(98, 216, 78, 0.45);
-            box-shadow: 0 0 24px var(--sn-green-glow);
-        }
-        .flow-connector { flex: 1; display: flex; align-items: center; justify-content: center; padding: 0 12px; }
-        .flow-svg { width: 100%; height: 24px; }
-        .flow-path {
-            stroke: var(--sn-green);
-            stroke-width: 2;
-            stroke-dasharray: 6 6;
-            fill: none;
-            animation: flowLine 1.2s linear infinite;
-        }
-
-        /* Workspace Layout */
-        .grid {
-            display: grid;
-            grid-template-columns: 380px 1fr;
-            gap: 20px;
-            margin-bottom: 28px;
-            animation: slideUp 0.65s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-        .card {
+        .nav-btn {
             background: var(--surface);
             border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 20px;
-            transition: border-color 0.25s ease;
+            color: var(--text-muted);
+            padding: 11px 22px; border-radius: 9px;
+            font-size: 13px; font-weight: 600;
+            transition: all 0.25s ease;
         }
-        .card:hover { border-color: rgba(148, 163, 184, 0.28); }
-        .card h2 {
-            margin: 0 0 4px 0;
-            font-size: 15px;
-            font-weight: 600;
-            color: #fff;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
+        .nav-btn:hover { border-color: var(--border-hover); color: #fff; }
+        .nav-btn.active {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.18), rgba(16, 185, 129, 0.05));
+            border-color: var(--emerald);
+            color: var(--emerald-bright);
+            box-shadow: 0 4px 20px rgba(16, 185, 129, 0.15);
         }
-        .card .sub { font-size: 12px; color: var(--text-dim); margin: 0 0 16px 0; }
+
+        .workspace-panel { display: none; }
+        .workspace-panel.active { display: block; animation: eliteFadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+        .card {
+            background: var(--surface-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 26px;
+            margin-bottom: 24px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            transition: border-color 0.3s ease;
+        }
+        .card:hover { border-color: var(--border-hover); }
+        .card h2 { margin: 0 0 6px 0; font-size: 16px; font-weight: 600; color: #fff; }
+        .card .sub { font-size: 13px; color: var(--text-muted); margin: 0 0 20px 0; }
 
         label {
-            display: block;
-            font-size: 11px;
-            font-weight: 600;
-            color: var(--text-dim);
-            text-transform: uppercase;
-            letter-spacing: 0.4px;
-            margin-bottom: 6px;
+            display: block; font-size: 11px; font-weight: 700; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 7px;
         }
         input, select, textarea {
-            width: 100%;
-            background: var(--bg);
-            border: 1px solid var(--border);
-            color: var(--text);
-            padding: 9px 12px;
-            border-radius: 7px;
-            font-size: 13px;
-            margin-bottom: 14px;
+            width: 100%; background: var(--bg); border: 1px solid var(--border);
+            color: var(--text-main); padding: 11px 14px; border-radius: 8px;
+            font-size: 13px; margin-bottom: 16px;
             transition: border-color 0.2s ease, box-shadow 0.2s ease;
         }
         input:focus, select:focus, textarea:focus {
-            outline: none;
-            border-color: var(--sn-green);
-            box-shadow: 0 0 0 3px var(--sn-green-glow);
+            outline: none; border-color: var(--emerald);
+            box-shadow: 0 0 0 3px var(--emerald-glow);
         }
-        textarea {
-            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-            font-size: 12px;
-            resize: vertical;
-        }
+        textarea { font-family: ui-monospace, monospace; font-size: 12px; resize: vertical; }
 
-        /* Postman URL Bar */
-        .url-bar {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 14px;
-        }
-        .url-bar select {
-            width: 115px;
-            margin-bottom: 0;
-            font-weight: 700;
-            color: var(--sn-green);
-        }
-        .url-bar input {
-            flex: 1;
-            margin-bottom: 0;
-            font-family: ui-monospace, monospace;
-            font-size: 12px;
-        }
-        .url-bar button {
-            width: auto;
-            padding: 0 20px;
-            white-space: nowrap;
-        }
+        /* Postman Bar */
+        .url-bar { display: flex; gap: 10px; margin-bottom: 18px; }
+        .url-bar select { width: 130px; margin-bottom: 0; font-weight: 700; color: var(--emerald-bright); }
+        .url-bar input { flex: 1; margin-bottom: 0; font-family: ui-monospace, monospace; font-size: 12px; }
+        .url-bar button { width: auto; padding: 0 26px; white-space: nowrap; margin-bottom: 0; }
 
-        /* Postman Sub-tabs */
-        .pm-tabs {
-            display: flex;
-            gap: 16px;
-            border-bottom: 1px solid var(--border);
-            margin-bottom: 14px;
-        }
+        .pm-tabs { display: flex; gap: 18px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
         .pm-tab {
-            background: none;
-            border: none;
-            color: var(--text-dim);
-            font-size: 12px;
-            font-weight: 600;
-            padding: 6px 2px 10px 2px;
-            cursor: pointer;
-            border-bottom: 2px solid transparent;
-            transition: color 0.2s ease, border-color 0.2s ease;
+            background: none; border: none; color: var(--text-muted); font-size: 12px; font-weight: 600;
+            padding: 8px 2px 12px 2px; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s ease;
         }
-        .pm-tab.active {
-            color: var(--sn-green);
-            border-bottom-color: var(--sn-green);
-        }
+        .pm-tab.active { color: var(--emerald-bright); border-bottom-color: var(--emerald); }
         .pm-panel { display: none; }
-        .pm-panel.active { display: block; animation: slideUp 0.25s ease; }
+        .pm-panel.active { display: block; animation: eliteFadeUp 0.3s ease; }
 
-        .header-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr 32px;
-            gap: 8px;
-            margin-bottom: 8px;
-        }
-        .header-row input { margin-bottom: 0; font-size: 12px; padding: 7px 10px; }
+        .header-row { display: grid; grid-template-columns: 1fr 1fr 38px; gap: 10px; margin-bottom: 10px; }
+        .header-row input { margin-bottom: 0; font-size: 12px; padding: 8px 12px; }
         .icon-btn {
-            background: var(--surface-elevated);
-            border: 1px solid var(--border);
-            color: var(--text-dim);
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 14px;
+            background: var(--surface-elevated); border: 1px solid var(--border); color: var(--text-muted);
+            border-radius: 8px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center;
         }
         .icon-btn:hover { color: var(--danger); border-color: var(--danger); }
 
         .btn-primary {
-            width: 100%;
-            background: var(--sn-green);
-            color: #051108;
-            border: none;
-            padding: 10px 16px;
-            border-radius: 7px;
-            font-weight: 700;
-            font-size: 13px;
-            cursor: pointer;
+            width: 100%; background: linear-gradient(135deg, var(--emerald), #059669);
+            color: #03110c; border: none; padding: 12px 18px; border-radius: 9px;
+            font-weight: 700; font-size: 13px; cursor: pointer;
+            box-shadow: 0 4px 15px var(--emerald-glow);
             transition: transform 0.2s ease, filter 0.2s ease;
         }
-        .btn-primary:hover:not(:disabled) {
-            filter: brightness(1.08);
-            transform: translateY(-1px);
-        }
-        .btn-primary:disabled {
-            background: var(--surface-elevated);
-            color: var(--text-dim);
-            cursor: not-allowed;
-        }
+        .btn-primary:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); }
+        .btn-primary:disabled { background: var(--surface-elevated); color: var(--text-muted); cursor: not-allowed; box-shadow: none; }
 
-        /* Feed Tabs */
-        .feed-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid var(--border);
-            padding-bottom: 12px;
-            margin-bottom: 16px;
-        }
-        .feed-tabs { display: flex; gap: 8px; }
-        .feed-tab {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            color: var(--text-dim);
-            padding: 7px 14px;
-            border-radius: 7px;
-            font-size: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        .feed-tab.active {
-            background: rgba(98, 216, 78, 0.12);
-            border-color: var(--sn-green);
-            color: var(--sn-green);
-        }
-
+        /* Log Cards */
         .log-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 16px;
-            margin-bottom: 12px;
-            animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            background: var(--surface-card); border: 1px solid var(--border); border-radius: 12px;
+            padding: 20px; margin-bottom: 16px; animation: eliteFadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .log-meta {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-            font-size: 12px;
-        }
+        .log-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 12px; }
         .badge {
-            padding: 3px 8px;
-            border-radius: 5px;
-            font-weight: 700;
-            font-size: 11px;
-            background: rgba(56, 189, 248, 0.15);
-            color: var(--accent);
+            padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 11px;
+            background: rgba(56, 189, 248, 0.15); color: var(--accent-blue);
         }
-        .badge-ok { background: rgba(98, 216, 78, 0.15); color: var(--sn-green); }
-        .badge-err { background: rgba(248, 113, 113, 0.15); color: var(--danger); }
+        .badge-ok { background: rgba(16, 185, 129, 0.15); color: var(--emerald-bright); }
+        .badge-err { background: rgba(244, 63, 94, 0.15); color: var(--danger); }
 
         pre {
-            background: var(--bg);
-            border: 1px solid var(--border);
-            border-radius: 7px;
-            padding: 12px;
-            margin: 8px 0 0 0;
-            font-size: 12px;
-            color: #cbd5e1;
-            overflow-x: auto;
+            background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+            padding: 14px; margin: 10px 0 0 0; font-size: 12px; color: #cbd5e1; overflow-x: auto;
         }
         .empty {
-            text-align: center;
-            padding: 40px;
-            color: var(--text-dim);
-            font-size: 13px;
-            background: var(--surface);
-            border: 1px dashed var(--border);
-            border-radius: 10px;
-        }
-        @media (max-width: 900px) {
-            .grid { grid-template-columns: 1fr; }
-            .flow-banner { flex-direction: column; gap: 12px; }
-            .flow-connector { transform: rotate(90deg); width: 40px; }
+            text-align: center; padding: 50px; color: var(--text-muted); font-size: 13px;
+            background: var(--surface-card); border: 1px dashed var(--border); border-radius: 12px;
         }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="ambient-bg"></div>
+    <div class="cursor-dot" id="cursorDot"></div>
+    <div class="cursor-outline" id="cursorOutline"></div>
+
+    <div class="container animate-in">
         <header>
             <div class="brand">
                 <h1>Nex<span>Relay</span> · ServiceNow Integration Hub</h1>
-                <p>Bi-Directional Table API & REST Message Engine</p>
+                <p>Masterpiece Bi-Directional Table API & REST Proxy</p>
             </div>
             <div class="status-badge">
                 <div class="status-dot"></div>
-                ServiceNow Listener Ready
+                Secure Gateway Online
             </div>
         </header>
 
-        <!-- Smooth Data Flow Architecture -->
-        <div class="flow-banner">
-            <div class="flow-node">
-                <strong>ServiceNow Instance</strong>
-                <span>Inbound REST Message</span>
-            </div>
-            <div class="flow-connector">
-                <svg class="flow-svg" viewBox="0 0 120 24">
-                    <line x1="0" y1="12" x2="120" y2="12" class="flow-path" />
-                </svg>
-            </div>
-            <div class="flow-node hub">
-                <strong>NexRelay Engine</strong>
-                <span>Auth & Payload Router</span>
-            </div>
-            <div class="flow-connector">
-                <svg class="flow-svg" viewBox="0 0 120 24">
-                    <line x1="0" y1="12" x2="120" y2="12" class="flow-path" />
-                </svg>
-            </div>
-            <div class="flow-node">
-                <strong>ServiceNow Table API</strong>
-                <span>Outbound HTTP Client</span>
-            </div>
+        <!-- Classic Navigation Tabs (Single Tab View) -->
+        <div class="nav-tabs">
+            <button class="nav-btn active" onclick="switchPanel('inbound', this)">Inbound Listener</button>
+            <button class="nav-btn" onclick="switchPanel('outbound', this)">Outbound HTTP Client</button>
+            <button class="nav-btn" onclick="switchPanel('logs', this)">Execution Logs (<span id="logCount">0</span>)</button>
         </div>
 
-        <div class="grid">
-            <!-- Left Panel: Single-Trigger Inbound Simulator -->
-            <div class="card">
-                <h2>Inbound Listener</h2>
-                <p class="sub">Simulate an incoming ServiceNow payload (single trigger per session).</p>
+        <!-- Panel 1: Inbound Listener -->
+        <div id="panel-inbound" class="workspace-panel active">
+            <div class="card" style="max-width: 650px;">
+                <h2>Inbound REST Simulator</h2>
+                <p class="sub">Simulate an incoming ServiceNow event payload (single trigger enforced per session).</p>
 
                 <label>ServiceNow Table</label>
                 <select id="inbTable">
@@ -552,16 +416,18 @@ app.get('/', (req, res) => {
                     <option value="record.updated">After Update (Modified)</option>
                 </select>
 
-                <label>Inbound Endpoint</label>
-                <input type="text" readonly value="/api/v1/servicenow/inbound" style="color: var(--text-dim); font-family: monospace; font-size: 12px;" />
+                <label>Secured Inbound Endpoint URL</label>
+                <input type="text" readonly value="/api/v1/servicenow/inbound" style="color: var(--text-muted); font-family: monospace; font-size: 12px;" />
 
                 <button class="btn-primary" id="inbound-btn" onclick="triggerInboundOnce()">Send Inbound Payload</button>
             </div>
+        </div>
 
-            <!-- Right Panel: Postman-Style Outbound HTTP Client -->
+        <!-- Panel 2: Outbound HTTP Client -->
+        <div id="panel-outbound" class="workspace-panel">
             <div class="card">
-                <h2>Outbound HTTP Client (ServiceNow API)</h2>
-                <p class="sub">Execute GET, POST, PUT, PATCH, or DELETE requests directly against your ServiceNow PDI.</p>
+                <h2>Postman-Grade Outbound HTTP Proxy</h2>
+                <p class="sub">Execute authenticated requests against your ServiceNow Table API or Scripted REST APIs.</p>
 
                 <div class="url-bar">
                     <select id="httpMethod" onchange="toggleBodyState()">
@@ -572,17 +438,16 @@ app.get('/', (req, res) => {
                         <option value="DELETE">DELETE</option>
                     </select>
                     <input type="url" id="httpUrl" placeholder="https://dev12345.service-now.com/api/now/table/incident" required />
-                    <button class="btn-primary" id="send-btn" onclick="sendOutboundRequest()">Send</button>
+                    <button class="btn-primary" id="send-btn" onclick="sendOutboundRequest()">Send Request</button>
                 </div>
 
-                <!-- Postman Config Sub-Tabs -->
                 <div class="pm-tabs">
                     <button class="pm-tab active" onclick="switchPmTab('auth', this)">Authorization</button>
                     <button class="pm-tab" onclick="switchPmTab('headers', this)">Headers</button>
                     <button class="pm-tab" onclick="switchPmTab('body', this)">Body (JSON)</button>
                 </div>
 
-                <!-- Auth Tab -->
+                <!-- Auth Sub-panel -->
                 <div id="pm-auth" class="pm-panel active">
                     <label>Auth Type</label>
                     <select id="authType" onchange="updateAuthPlaceholder()">
@@ -594,7 +459,7 @@ app.get('/', (req, res) => {
                     <input type="password" id="authValue" placeholder="admin:your_pdi_password" />
                 </div>
 
-                <!-- Headers Tab -->
+                <!-- Headers Sub-panel -->
                 <div id="pm-headers" class="pm-panel">
                     <div id="headersList">
                         <div class="header-row">
@@ -603,14 +468,14 @@ app.get('/', (req, res) => {
                             <button type="button" class="icon-btn" onclick="this.parentElement.remove()">&times;</button>
                         </div>
                     </div>
-                    <button type="button" class="feed-tab" style="margin-top: 4px;" onclick="addHeaderRow()">+ Add Header</button>
+                    <button type="button" class="nav-btn" style="padding: 7px 14px; font-size: 12px; margin-top: 6px;" onclick="addHeaderRow()">+ Add Header</button>
                 </div>
 
-                <!-- Body Tab -->
+                <!-- Body Sub-panel -->
                 <div id="pm-body" class="pm-panel">
-                    <label>Raw JSON Payload</label>
-                    <textarea id="httpBody" rows="5">{
-  "short_description": "Automated incident created via NexRelay Hub",
+                    <label>Raw JSON Body</label>
+                    <textarea id="httpBody" rows="6">{
+  "short_description": "Elite automated incident created via NexRelay Hub",
   "urgency": "2",
   "impact": "2",
   "category": "software"
@@ -619,25 +484,51 @@ app.get('/', (req, res) => {
             </div>
         </div>
 
-        <!-- Execution Logs -->
-        <div class="feed-header">
-            <div class="feed-tabs">
-                <button class="feed-tab active" id="tab-outbound" onclick="switchFeed('outbound')">Outbound Responses (0)</button>
-                <button class="feed-tab" id="tab-inbound" onclick="switchFeed('inbound')">Inbound Payloads (0)</button>
+        <!-- Panel 3: Execution Logs -->
+        <div id="panel-logs" class="workspace-panel">
+            <div class="card" style="background: transparent; border: none; padding: 0; box-shadow: none;">
+                <h2>Execution History & Diagnostics</h2>
+                <p class="sub">Real-time audit trail of inbound triggers and outbound proxy responses.</p>
+                <div id="logsContainer">
+                    <div class="empty">No execution logs recorded in this session.</div>
+                </div>
             </div>
-        </div>
-
-        <div id="logsContainer">
-            <div class="empty">Clean workspace. Send an outbound API request or trigger an inbound payload above.</div>
         </div>
     </div>
 
     <script>
-        let activeFeed = 'outbound';
-        let inboundData = [];
-        let outboundData = [];
-        let inboundTriggered = false;
-        let sendingRequest = false;
+        // Pro Custom Cursor Movement & Hover Effect
+        const dot = document.getElementById('cursorDot');
+        const outline = document.getElementById('cursorOutline');
+        let mouseX = 0, mouseY = 0, outlineX = 0, outlineY = 0;
+
+        window.addEventListener('mousemove', e => {
+            mouseX = e.clientX; mouseY = e.clientY;
+            dot.style.left = mouseX + 'px';
+            dot.style.top = mouseY + 'px';
+        });
+
+        function renderCursor() {
+            outlineX += (mouseX - outlineX) * 0.2;
+            outlineY += (mouseY - outlineY) * 0.2;
+            outline.style.left = outlineX + 'px';
+            outline.style.top = outlineY + 'px';
+            requestAnimationFrame(renderCursor);
+        }
+        renderCursor();
+
+        document.querySelectorAll('button, input, select, textarea').forEach(el => {
+            el.addEventListener('mouseenter', () => document.body.classList.add('hovering'));
+            el.addEventListener('mouseleave', () => document.body.classList.remove('hovering'));
+        });
+
+        // Single Tab Display Controller
+        function switchPanel(panelId, btn) {
+            document.querySelectorAll('.workspace-panel').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById('panel-' + panelId).classList.add('active');
+            btn.classList.add('active');
+        }
 
         function switchPmTab(panel, btn) {
             document.querySelectorAll('.pm-tab').forEach(t => t.classList.remove('active'));
@@ -669,8 +560,8 @@ app.get('/', (req, res) => {
             const row = document.createElement('div');
             row.className = 'header-row';
             row.innerHTML = \`
-                <input type="text" placeholder="Header Key" class="h-key" />
-                <input type="text" placeholder="Header Value" class="h-val" />
+                <input type="text" placeholder="Key" class="h-key" />
+                <input type="text" placeholder="Value" class="h-val" />
                 <button type="button" class="icon-btn" onclick="this.parentElement.remove()">&times;</button>
             \`;
             document.getElementById('headersList').appendChild(row);
@@ -682,19 +573,16 @@ app.get('/', (req, res) => {
             bodyField.disabled = (method === 'GET' || method === 'DELETE');
         }
 
-        function switchFeed(type) {
-            activeFeed = type;
-            document.getElementById('tab-outbound').classList.toggle('active', type === 'outbound');
-            document.getElementById('tab-inbound').classList.toggle('active', type === 'inbound');
-            renderLogs();
+        let inboundTriggered = false;
+        let inboundData = [];
+        let outboundData = [];
+
+        function updateLogCount() {
+            const total = inboundData.length + outboundData.length;
+            document.getElementById('logCount').innerText = total;
         }
 
-        function updateCounts() {
-            document.getElementById('tab-outbound').innerText = \`Outbound Responses (\${outboundData.length})\`;
-            document.getElementById('tab-inbound').innerText = \`Inbound Payloads (\${inboundData.length})\`;
-        }
-
-        // Single-Trigger Inbound Execution
+        // Single-Trigger Inbound
         async function triggerInboundOnce() {
             if (inboundTriggered) return;
             inboundTriggered = true;
@@ -726,20 +614,21 @@ app.get('/', (req, res) => {
                 const data = await res.json();
                 if (res.ok && data.record) {
                     inboundData.unshift(data.record);
-                    updateCounts();
-                    switchFeed('inbound');
+                    updateLogCount();
+                    renderLogs();
                 }
             } catch (err) {
                 console.error(err);
             }
         }
 
-        // Postman-Style Outbound HTTP Execution
+        let sendingRequest = false;
+
         async function sendOutboundRequest() {
             if (sendingRequest) return;
             const url = document.getElementById('httpUrl').value.trim();
             if (!url) {
-                alert('Please enter a ServiceNow endpoint URL.');
+                alert('Validation Error: Please enter a target ServiceNow endpoint URL.');
                 return;
             }
 
@@ -748,7 +637,6 @@ app.get('/', (req, res) => {
             const authValue = document.getElementById('authValue').value;
             const rawBody = document.getElementById('httpBody').value;
 
-            // Collect custom headers
             const headers = {};
             document.querySelectorAll('#headersList .header-row').forEach(row => {
                 const k = row.querySelector('.h-key').value.trim();
@@ -761,7 +649,7 @@ app.get('/', (req, res) => {
                 try {
                     parsedBody = JSON.parse(rawBody);
                 } catch (e) {
-                    alert('Invalid JSON in Request Body.');
+                    alert('Syntax Error: Request body contains invalid JSON format.');
                     return;
                 }
             }
@@ -769,60 +657,55 @@ app.get('/', (req, res) => {
             sendingRequest = true;
             const btn = document.getElementById('send-btn');
             btn.disabled = true;
-            btn.innerText = 'Sending...';
+            btn.innerText = 'Dispatching...';
 
             try {
                 const res = await fetch('/api/v1/servicenow/outbound', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        method,
-                        url,
-                        authType,
-                        authValue,
-                        headers,
-                        body: parsedBody
-                    })
+                    body: JSON.stringify({ method, url, authType, authValue, headers, body: parsedBody })
                 });
                 const data = await res.json();
                 if (res.ok && data.record) {
                     outboundData.unshift(data.record);
-                    updateCounts();
-                    switchFeed('outbound');
+                    updateLogCount();
+                    renderLogs();
+                    // Automatically switch to logs to show result
+                    document.querySelector('.nav-btn:nth-child(3)').click();
                 }
             } catch (err) {
                 console.error(err);
             } finally {
                 sendingRequest = false;
                 btn.disabled = false;
-                btn.innerText = 'Send';
+                btn.innerText = 'Send Request';
             }
         }
 
         function renderLogs() {
             const container = document.getElementById('logsContainer');
-            const list = activeFeed === 'outbound' ? outboundData : inboundData;
+            const allLogs = [...outboundData, ...inboundData];
 
-            if (!list.length) {
-                container.innerHTML = \`<div class="empty">No \${activeFeed} records in this session.</div>\`;
+            if (!allLogs.length) {
+                container.innerHTML = \`<div class="empty">No execution logs recorded in this session.</div>\`;
                 return;
             }
 
-            if (activeFeed === 'inbound') {
-                container.innerHTML = list.map(item => \`
-                    <div class="log-card">
-                        <div class="log-meta">
-                            <div>
-                                <span class="badge">SERVICENOW INBOUND</span>
-                                <strong style="margin-left: 8px; color: #fff;">\${item.id}</strong>
+            container.innerHTML = allLogs.map(item => {
+                if (item.direction === 'INBOUND') {
+                    return \`
+                        <div class="log-card">
+                            <div class="log-meta">
+                                <div>
+                                    <span class="badge">SERVICENOW INBOUND</span>
+                                    <strong style="margin-left: 8px; color: #fff;">\${item.id}</strong>
+                                </div>
+                                <span style="color: var(--text-muted);">\${item.timestamp}</span>
                             </div>
-                            <span style="color: var(--text-dim);">\${item.timestamp}</span>
+                            <pre>\${JSON.stringify(item.payload, null, 2)}</pre>
                         </div>
-                        <pre>\${JSON.stringify(item.payload, null, 2)}</pre>
-                    </div>
-                \`).join('');
-            } else {
-                container.innerHTML = list.map(item => {
+                    \`;
+                } else {
                     const isSuccess = item.statusCode >= 200 && item.statusCode < 300;
                     return \`
                         <div class="log-card">
@@ -830,17 +713,17 @@ app.get('/', (req, res) => {
                                 <div>
                                     <span class="badge">\${item.method}</span>
                                     <span class="badge \${isSuccess ? 'badge-ok' : 'badge-err'}" style="margin-left: 6px;">\${item.status}</span>
-                                    <span style="margin-left: 8px; color: var(--text-dim); font-size: 11px;">\${item.durationMs} ms</span>
+                                    <span style="margin-left: 8px; color: var(--text-muted); font-size: 11px;">\${item.durationMs} ms</span>
                                 </div>
-                                <span style="color: var(--text-dim);">\${item.timestamp}</span>
+                                <span style="color: var(--text-muted);">\${item.timestamp}</span>
                             </div>
-                            <div style="font-family: monospace; font-size: 12px; color: var(--accent); margin-bottom: 8px; word-break: break-all;">\${item.url}</div>
-                            <label style="margin-top: 8px;">ServiceNow Response Body</label>
+                            <div style="font-family: monospace; font-size: 12px; color: var(--accent-blue); margin-bottom: 8px; word-break: break-all;">\${item.url}</div>
+                            <label style="margin-top: 8px;">Response Payload</label>
                             <pre>\${JSON.stringify(item.responsePayload, null, 2)}</pre>
                         </div>
                     \`;
-                }).join('');
-            }
+                }
+            }).join('');
         }
     </script>
 </body>
@@ -848,5 +731,5 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`NexRelay ServiceNow Integration Hub running on port ${PORT}`);
+    console.log(`NexRelay Masterpiece ServiceNow Integration Hub running on port ${PORT}`);
 });
