@@ -6,7 +6,6 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Cryptographically Secure High-Entropy Token for Inbound ServiceNow Rest Messages
 const SECURE_API_KEY = "sn_nex_" + crypto.randomBytes(32).toString('hex');
 console.log(`[Security] Generated ServiceNow Inbound Bearer Token: ${SECURE_API_KEY}`);
 
@@ -23,7 +22,7 @@ app.post('/api/v1/servicenow/inbound', (req, res) => {
     if (!authHeader || authHeader !== `Bearer ${SECURE_API_KEY}`) {
         return res.status(401).json({ 
             status: 'Error', 
-            message: 'Authentication failed: The provided Bearer token is invalid or missing.' 
+            message: 'Authentication failed: The provided Bearer token in the Authorization header is invalid or missing.' 
         });
     }
 
@@ -46,19 +45,19 @@ app.post('/api/v1/servicenow/inbound', (req, res) => {
 
     res.status(200).json({
         status: 'Success',
-        message: 'Inbound ServiceNow payload successfully ingested.',
+        message: 'Inbound ServiceNow payload successfully ingested by NexRelay.',
         record: inboundEntry
     });
 });
 
-// 2. Postman-Style Outbound HTTP Proxy with Diagnostic Precision
+// 2. Postman-Style Outbound HTTP Proxy with Separate Username/Password Support
 app.post('/api/v1/servicenow/outbound', async (req, res) => {
-    const { method, url, authType, authValue, headers, body } = req.body;
+    const { method, url, authType, basicUser, basicPass, bearerToken, headers, body } = req.body;
 
     if (!url || !method) {
         return res.status(400).json({ 
             status: 'Error', 
-            message: 'Validation Error: Both HTTP Method and Target Endpoint URL are required.' 
+            message: 'Validation Error: Both HTTP Method and Target Endpoint URL are required to execute the request.' 
         });
     }
 
@@ -77,10 +76,11 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
         });
     }
 
-    if (authType === 'basic' && authValue) {
-        requestHeaders['Authorization'] = 'Basic ' + Buffer.from(authValue).toString('base64');
-    } else if (authType === 'bearer' && authValue) {
-        requestHeaders['Authorization'] = `Bearer ${authValue}`;
+    if (authType === 'basic' && basicUser) {
+        const combined = `${basicUser}:${basicPass || ''}`;
+        requestHeaders['Authorization'] = 'Basic ' + Buffer.from(combined).toString('base64');
+    } else if (authType === 'bearer' && bearerToken) {
+        requestHeaders['Authorization'] = `Bearer ${bearerToken}`;
     }
 
     const fetchOptions = {
@@ -117,7 +117,7 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
         diagnosticError = error.message;
         responseData = {
             error: error.message,
-            diagnosticAdvice: 'Verify that your ServiceNow Personal Developer Instance (PDI) is active, online, and not hibernating. Check firewall rules and ensure the URL prefix matches standard instance routing.'
+            diagnosticAdvice: 'Verify that your ServiceNow Personal Developer Instance (PDI) is online and reachable. Check firewall rules, VPN configurations, and ensure the URL prefix matches standard instance routing.'
         };
     }
 
@@ -144,7 +144,7 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
     });
 });
 
-// 3. Elite Masterpiece Frontend (Classic Obsidian-Emerald Theme + Smooth Background & Cursor Animations)
+// 3. Masterpiece Frontend (Cyber-Indigo & Obsidian Theme + Heavy Ambient Animations)
 app.get('/', (req, res) => {
     res.send(`<!DOCTYPE html>
 <html lang="en">
@@ -154,16 +154,17 @@ app.get('/', (req, res) => {
     <title>NexRelay | Masterpiece ServiceNow Integration Hub</title>
     <style>
         :root {
-            --bg: #030706;
-            --surface: #0a1310;
-            --surface-card: #0f1c18;
-            --surface-elevated: #162622;
-            --border: rgba(16, 185, 129, 0.15);
-            --border-hover: rgba(16, 185, 129, 0.35);
+            --bg: #030409;
+            --surface: #0a0e1a;
+            --surface-card: #101628;
+            --surface-elevated: #18223c;
+            --border: rgba(99, 102, 241, 0.18);
+            --border-hover: rgba(99, 102, 241, 0.45);
+            --indigo: #6366f1;
+            --indigo-glow: rgba(99, 102, 241, 0.35);
+            --cyan: #38bdf8;
+            --cyan-glow: rgba(56, 189, 248, 0.3);
             --emerald: #10b981;
-            --emerald-glow: rgba(16, 185, 129, 0.25);
-            --emerald-bright: #34d399;
-            --accent-blue: #38bdf8;
             --danger: #f43f5e;
             --warning: #fbbf24;
             --text-main: #f8fafc;
@@ -183,53 +184,54 @@ app.get('/', (req, res) => {
             position: relative;
         }
 
-        /* Ambient Dynamic Background Glow Animation */
+        /* Heavy Animated Background Orbs & Grids */
         .ambient-bg {
             position: fixed;
             top: 0; left: 0; width: 100vw; height: 100vh;
             pointer-events: none;
             z-index: -1;
             background: 
-                radial-gradient(circle at 15% 20%, rgba(16, 185, 129, 0.07) 0%, transparent 40%),
-                radial-gradient(circle at 85% 80%, rgba(56, 189, 248, 0.05) 0%, transparent 45%);
-            animation: ambientShift 14s ease-in-out infinite alternate;
+                radial-gradient(circle at 10% 15%, rgba(99, 102, 241, 0.12) 0%, transparent 45%),
+                radial-gradient(circle at 90% 85%, rgba(56, 189, 248, 0.09) 0%, transparent 45%),
+                radial-gradient(circle at 50% 50%, rgba(16, 185, 129, 0.05) 0%, transparent 60%);
+            animation: orbFloat 12s ease-in-out infinite alternate;
         }
-        @keyframes ambientShift {
+        @keyframes orbFloat {
             0% { transform: scale(1) translate(0, 0); }
-            100% { transform: scale(1.06) translate(-15px, 15px); }
+            100% { transform: scale(1.08) translate(-20px, 20px); }
         }
 
-        /* Custom Pro Cursor */
+        /* Custom Glowing Cursor */
         .cursor-dot {
-            position: fixed; top: 0; left: 0; width: 6px; height: 6px;
-            background: var(--emerald-bright); border-radius: 50%;
+            position: fixed; top: 0; left: 0; width: 8px; height: 8px;
+            background: var(--cyan); border-radius: 50%;
             pointer-events: none; z-index: 99999;
             transform: translate(-50%, -50%);
-            transition: transform 0.1s ease, background 0.2s ease;
-            box-shadow: 0 0 10px var(--emerald);
+            box-shadow: 0 0 12px var(--cyan);
+            transition: transform 0.1s ease;
         }
         .cursor-outline {
-            position: fixed; top: 0; left: 0; width: 36px; height: 36px;
-            border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 50%;
+            position: fixed; top: 0; left: 0; width: 40px; height: 40px;
+            border: 1px solid rgba(99, 102, 241, 0.5); border-radius: 50%;
             pointer-events: none; z-index: 99998;
             transform: translate(-50%, -50%);
             transition: width 0.25s ease, height 0.25s ease, border-color 0.25s ease, background 0.25s ease;
-            background: rgba(16, 185, 129, 0.02);
+            background: rgba(99, 102, 241, 0.04);
         }
         body.hovering .cursor-outline {
-            width: 52px; height: 52px;
-            border-color: var(--emerald);
-            background: rgba(16, 185, 129, 0.08);
+            width: 56px; height: 56px;
+            border-color: var(--cyan);
+            background: rgba(56, 189, 248, 0.1);
         }
 
         .container { max-width: 1200px; margin: 0 auto; position: relative; z-index: 1; }
 
-        /* Smooth Entrance */
-        @keyframes eliteFadeUp {
-            from { opacity: 0; transform: translateY(18px); }
-            to { opacity: 1; transform: translateY(0); }
+        /* Heavy Entrance & Morph Animations */
+        @keyframes heavyFadeIn {
+            from { opacity: 0; transform: translateY(20px) scale(0.99); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
         }
-        .animate-in { animation: eliteFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .animate-in { animation: heavyFadeIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 
         header {
             display: flex;
@@ -243,132 +245,133 @@ app.get('/', (req, res) => {
             margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;
             display: flex; align-items: center; gap: 10px; color: #fff;
         }
-        .brand h1 span { color: var(--emerald); text-shadow: 0 0 20px var(--emerald-glow); }
+        .brand h1 span { color: var(--indigo); text-shadow: 0 0 25px var(--indigo-glow); }
         .brand p { margin: 6px 0 0 0; font-size: 13px; color: var(--text-muted); }
 
         .status-badge {
             display: flex; align-items: center; gap: 9px;
-            background: rgba(16, 185, 129, 0.08);
-            border: 1px solid rgba(16, 185, 129, 0.3);
-            color: var(--emerald-bright);
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.35);
+            color: var(--cyan);
             padding: 7px 16px; border-radius: 999px;
             font-size: 12px; font-weight: 600;
-            box-shadow: 0 0 15px rgba(16, 185, 129, 0.1);
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.15);
         }
         .status-dot {
-            width: 8px; height: 8px; background: var(--emerald); border-radius: 50%;
+            width: 8px; height: 8px; background: var(--cyan); border-radius: 50%;
             animation: pulseDot 2s infinite;
         }
         @keyframes pulseDot {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-            50% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+            0%, 100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.8); }
+            50% { box-shadow: 0 0 0 9px rgba(56, 189, 248, 0); }
         }
 
-        /* Navigation Bar (Single Active Tab View) */
+        /* Navigation Tabs */
         .nav-tabs {
-            display: flex; gap: 10px; margin-bottom: 28px;
+            display: flex; gap: 12px; margin-bottom: 28px;
         }
         .nav-btn {
             background: var(--surface);
             border: 1px solid var(--border);
             color: var(--text-muted);
-            padding: 11px 22px; border-radius: 9px;
+            padding: 12px 24px; border-radius: 10px;
             font-size: 13px; font-weight: 600;
-            transition: all 0.25s ease;
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .nav-btn:hover { border-color: var(--border-hover); color: #fff; }
+        .nav-btn:hover { border-color: var(--border-hover); color: #fff; transform: translateY(-1px); }
         .nav-btn.active {
-            background: linear-gradient(135deg, rgba(16, 185, 129, 0.18), rgba(16, 185, 129, 0.05));
-            border-color: var(--emerald);
-            color: var(--emerald-bright);
-            box-shadow: 0 4px 20px rgba(16, 185, 129, 0.15);
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.22), rgba(56, 189, 248, 0.1));
+            border-color: var(--indigo);
+            color: var(--cyan);
+            box-shadow: 0 6px 25px rgba(99, 102, 241, 0.25);
         }
 
+        /* Single Panel Display */
         .workspace-panel { display: none; }
-        .workspace-panel.active { display: block; animation: eliteFadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .workspace-panel.active { display: block; animation: heavyFadeIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 
         .card {
             background: var(--surface-card);
             border: 1px solid var(--border);
-            border-radius: 14px;
-            padding: 26px;
+            border-radius: 16px;
+            padding: 30px;
             margin-bottom: 24px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
             transition: border-color 0.3s ease;
         }
         .card:hover { border-color: var(--border-hover); }
-        .card h2 { margin: 0 0 6px 0; font-size: 16px; font-weight: 600; color: #fff; }
-        .card .sub { font-size: 13px; color: var(--text-muted); margin: 0 0 20px 0; }
+        .card h2 { margin: 0 0 6px 0; font-size: 18px; font-weight: 600; color: #fff; }
+        .card .sub { font-size: 13px; color: var(--text-muted); margin: 0 0 24px 0; }
 
         label {
             display: block; font-size: 11px; font-weight: 700; color: var(--text-muted);
-            text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 7px;
+            text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 8px;
         }
         input, select, textarea {
             width: 100%; background: var(--bg); border: 1px solid var(--border);
-            color: var(--text-main); padding: 11px 14px; border-radius: 8px;
-            font-size: 13px; margin-bottom: 16px;
+            color: var(--text-main); padding: 12px 16px; border-radius: 9px;
+            font-size: 13px; margin-bottom: 18px;
             transition: border-color 0.2s ease, box-shadow 0.2s ease;
         }
         input:focus, select:focus, textarea:focus {
-            outline: none; border-color: var(--emerald);
-            box-shadow: 0 0 0 3px var(--emerald-glow);
+            outline: none; border-color: var(--indigo);
+            box-shadow: 0 0 0 3px var(--indigo-glow);
         }
         textarea { font-family: ui-monospace, monospace; font-size: 12px; resize: vertical; }
 
         /* Postman Bar */
-        .url-bar { display: flex; gap: 10px; margin-bottom: 18px; }
-        .url-bar select { width: 130px; margin-bottom: 0; font-weight: 700; color: var(--emerald-bright); }
+        .url-bar { display: flex; gap: 12px; margin-bottom: 20px; }
+        .url-bar select { width: 135px; margin-bottom: 0; font-weight: 700; color: var(--cyan); }
         .url-bar input { flex: 1; margin-bottom: 0; font-family: ui-monospace, monospace; font-size: 12px; }
-        .url-bar button { width: auto; padding: 0 26px; white-space: nowrap; margin-bottom: 0; }
+        .url-bar button { width: auto; padding: 0 28px; white-space: nowrap; margin-bottom: 0; }
 
-        .pm-tabs { display: flex; gap: 18px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+        .pm-tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
         .pm-tab {
             background: none; border: none; color: var(--text-muted); font-size: 12px; font-weight: 600;
-            padding: 8px 2px 12px 2px; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s ease;
+            padding: 8px 2px 14px 2px; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s ease;
         }
-        .pm-tab.active { color: var(--emerald-bright); border-bottom-color: var(--emerald); }
+        .pm-tab.active { color: var(--cyan); border-bottom-color: var(--indigo); }
         .pm-panel { display: none; }
-        .pm-panel.active { display: block; animation: eliteFadeUp 0.3s ease; }
+        .pm-panel.active { display: block; animation: heavyFadeIn 0.3s ease; }
 
-        .header-row { display: grid; grid-template-columns: 1fr 1fr 38px; gap: 10px; margin-bottom: 10px; }
-        .header-row input { margin-bottom: 0; font-size: 12px; padding: 8px 12px; }
+        .header-row { display: grid; grid-template-columns: 1fr 1fr 40px; gap: 12px; margin-bottom: 12px; }
+        .header-row input { margin-bottom: 0; font-size: 12px; padding: 9px 14px; }
         .icon-btn {
             background: var(--surface-elevated); border: 1px solid var(--border); color: var(--text-muted);
-            border-radius: 8px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center;
+            border-radius: 9px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center;
         }
         .icon-btn:hover { color: var(--danger); border-color: var(--danger); }
 
         .btn-primary {
-            width: 100%; background: linear-gradient(135deg, var(--emerald), #059669);
-            color: #03110c; border: none; padding: 12px 18px; border-radius: 9px;
+            width: 100%; background: linear-gradient(135deg, var(--indigo), #4f46e5);
+            color: #fff; border: none; padding: 13px 20px; border-radius: 10px;
             font-weight: 700; font-size: 13px; cursor: pointer;
-            box-shadow: 0 4px 15px var(--emerald-glow);
+            box-shadow: 0 6px 20px var(--indigo-glow);
             transition: transform 0.2s ease, filter 0.2s ease;
         }
-        .btn-primary:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); }
+        .btn-primary:hover:not(:disabled) { filter: brightness(1.12); transform: translateY(-1px); }
         .btn-primary:disabled { background: var(--surface-elevated); color: var(--text-muted); cursor: not-allowed; box-shadow: none; }
 
         /* Log Cards */
         .log-card {
-            background: var(--surface-card); border: 1px solid var(--border); border-radius: 12px;
-            padding: 20px; margin-bottom: 16px; animation: eliteFadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            background: var(--surface-card); border: 1px solid var(--border); border-radius: 14px;
+            padding: 22px; margin-bottom: 18px; animation: heavyFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .log-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 12px; }
+        .log-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; font-size: 12px; }
         .badge {
             padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 11px;
-            background: rgba(56, 189, 248, 0.15); color: var(--accent-blue);
+            background: rgba(99, 102, 241, 0.2); color: var(--cyan);
         }
-        .badge-ok { background: rgba(16, 185, 129, 0.15); color: var(--emerald-bright); }
-        .badge-err { background: rgba(244, 63, 94, 0.15); color: var(--danger); }
+        .badge-ok { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+        .badge-err { background: rgba(244, 63, 94, 0.2); color: var(--danger); }
 
         pre {
-            background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
-            padding: 14px; margin: 10px 0 0 0; font-size: 12px; color: #cbd5e1; overflow-x: auto;
+            background: var(--bg); border: 1px solid var(--border); border-radius: 9px;
+            padding: 16px; margin: 10px 0 0 0; font-size: 12px; color: #cbd5e1; overflow-x: auto;
         }
         .empty {
-            text-align: center; padding: 50px; color: var(--text-muted); font-size: 13px;
-            background: var(--surface-card); border: 1px dashed var(--border); border-radius: 12px;
+            text-align: center; padding: 60px; color: var(--text-muted); font-size: 13px;
+            background: var(--surface-card); border: 1px dashed var(--border); border-radius: 14px;
         }
     </style>
 </head>
@@ -389,41 +392,31 @@ app.get('/', (req, res) => {
             </div>
         </header>
 
-        <!-- Classic Navigation Tabs (Single Tab View) -->
+        <!-- Navigation Tabs (Only particular panel displays upon click) -->
         <div class="nav-tabs">
-            <button class="nav-btn active" onclick="switchPanel('inbound', this)">Inbound Listener</button>
+            <button class="nav-btn active" onclick="switchPanel('inbound', this)">Inbound Link</button>
             <button class="nav-btn" onclick="switchPanel('outbound', this)">Outbound HTTP Client</button>
             <button class="nav-btn" onclick="switchPanel('logs', this)">Execution Logs (<span id="logCount">0</span>)</button>
         </div>
 
-        <!-- Panel 1: Inbound Listener -->
+        <!-- Panel 1: Inbound Link Only -->
         <div id="panel-inbound" class="workspace-panel active">
-            <div class="card" style="max-width: 650px;">
-                <h2>Inbound REST Simulator</h2>
-                <p class="sub">Simulate an incoming ServiceNow event payload (single trigger enforced per session).</p>
+            <div class="card" style="max-width: 700px;">
+                <h2>Inbound Webhook Endpoint</h2>
+                <p class="sub">Provide this exact website link to your ServiceNow instance (via REST Message or Business Rule) to ingest payloads.</p>
 
-                <label>ServiceNow Table</label>
-                <select id="inbTable">
-                    <option value="incident">Incident [incident]</option>
-                    <option value="change_request">Change Request [change_request]</option>
-                    <option value="problem">Problem [problem]</option>
-                    <option value="sc_req_item">Requested Item [sc_req_item]</option>
-                </select>
+                <label>Secured Inbound Webhook URL</label>
+                <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                    <input type="text" id="inboundUrlBox" readonly style="margin-bottom: 0; font-family: monospace; color: var(--cyan);" />
+                    <button class="btn-primary" style="width: auto; padding: 0 24px;" onclick="copyInboundUrl()">Copy Link</button>
+                </div>
 
-                <label>Trigger Event</label>
-                <select id="inbEvent">
-                    <option value="record.inserted">After Insert (Created)</option>
-                    <option value="record.updated">After Update (Modified)</option>
-                </select>
-
-                <label>Secured Inbound Endpoint URL</label>
-                <input type="text" readonly value="/api/v1/servicenow/inbound" style="color: var(--text-muted); font-family: monospace; font-size: 12px;" />
-
-                <button class="btn-primary" id="inbound-btn" onclick="triggerInboundOnce()">Send Inbound Payload</button>
+                <label>Required Authorization Header</label>
+                <input type="text" readonly value="Authorization: Bearer ${SECURE_API_KEY}" style="margin-bottom: 0; font-family: monospace; color: var(--text-muted);" />
             </div>
         </div>
 
-        <!-- Panel 2: Outbound HTTP Client -->
+        <!-- Panel 2: Outbound HTTP Client with Separate Username & Password Fields -->
         <div id="panel-outbound" class="workspace-panel">
             <div class="card">
                 <h2>Postman-Grade Outbound HTTP Proxy</h2>
@@ -447,16 +440,32 @@ app.get('/', (req, res) => {
                     <button class="pm-tab" onclick="switchPmTab('body', this)">Body (JSON)</button>
                 </div>
 
-                <!-- Auth Sub-panel -->
+                <!-- Auth Sub-panel with Separate Username & Password Fields -->
                 <div id="pm-auth" class="pm-panel active">
                     <label>Auth Type</label>
-                    <select id="authType" onchange="updateAuthPlaceholder()">
-                        <option value="basic">Basic Auth (username:password)</option>
+                    <select id="authType" onchange="updateAuthFields()">
+                        <option value="basic">Basic Auth (Separate Username & Password)</option>
                         <option value="bearer">Bearer Token (OAuth 2.0)</option>
                         <option value="none">No Auth</option>
                     </select>
-                    <label id="authLabel">Credentials (username:password)</label>
-                    <input type="password" id="authValue" placeholder="admin:your_pdi_password" />
+
+                    <div id="basicAuthFields">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                            <div>
+                                <label>Username</label>
+                                <input type="text" id="basicUser" placeholder="admin" />
+                            </div>
+                            <div>
+                                <label>Password</label>
+                                <input type="password" id="basicPass" placeholder="your_pdi_password" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="bearerAuthField" style="display: none;">
+                        <label>OAuth Access Token</label>
+                        <input type="password" id="bearerToken" placeholder="Paste ServiceNow OAuth Bearer Token" />
+                    </div>
                 </div>
 
                 <!-- Headers Sub-panel -->
@@ -468,7 +477,7 @@ app.get('/', (req, res) => {
                             <button type="button" class="icon-btn" onclick="this.parentElement.remove()">&times;</button>
                         </div>
                     </div>
-                    <button type="button" class="nav-btn" style="padding: 7px 14px; font-size: 12px; margin-top: 6px;" onclick="addHeaderRow()">+ Add Header</button>
+                    <button type="button" class="nav-btn" style="padding: 8px 16px; font-size: 12px; margin-top: 8px;" onclick="addHeaderRow()">+ Add Header</button>
                 </div>
 
                 <!-- Body Sub-panel -->
@@ -488,7 +497,7 @@ app.get('/', (req, res) => {
         <div id="panel-logs" class="workspace-panel">
             <div class="card" style="background: transparent; border: none; padding: 0; box-shadow: none;">
                 <h2>Execution History & Diagnostics</h2>
-                <p class="sub">Real-time audit trail of inbound triggers and outbound proxy responses.</p>
+                <p class="sub">Real-time audit trail of inbound webhook receptions and outbound proxy responses.</p>
                 <div id="logsContainer">
                     <div class="empty">No execution logs recorded in this session.</div>
                 </div>
@@ -497,7 +506,16 @@ app.get('/', (req, res) => {
     </div>
 
     <script>
-        // Pro Custom Cursor Movement & Hover Effect
+        // Set dynamic inbound URL on load
+        document.getElementById('inboundUrlBox').value = window.location.origin + '/api/v1/servicenow/inbound';
+
+        function copyInboundUrl() {
+            const box = document.getElementById('inboundUrlBox');
+            navigator.clipboard.writeText(box.value);
+            alert('Inbound Webhook Link copied to clipboard successfully!');
+        }
+
+        // Custom Glowing Cursor Movement
         const dot = document.getElementById('cursorDot');
         const outline = document.getElementById('cursorOutline');
         let mouseX = 0, mouseY = 0, outlineX = 0, outlineY = 0;
@@ -509,8 +527,8 @@ app.get('/', (req, res) => {
         });
 
         function renderCursor() {
-            outlineX += (mouseX - outlineX) * 0.2;
-            outlineY += (mouseY - outlineY) * 0.2;
+            outlineX += (mouseX - outlineX) * 0.22;
+            outlineY += (mouseY - outlineY) * 0.22;
             outline.style.left = outlineX + 'px';
             outline.style.top = outlineY + 'px';
             requestAnimationFrame(renderCursor);
@@ -522,7 +540,7 @@ app.get('/', (req, res) => {
             el.addEventListener('mouseleave', () => document.body.classList.remove('hovering'));
         });
 
-        // Single Tab Display Controller
+        // Single Panel Display Switcher
         function switchPanel(panelId, btn) {
             document.querySelectorAll('.workspace-panel').forEach(p => p.classList.remove('active'));
             document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
@@ -537,22 +555,20 @@ app.get('/', (req, res) => {
             document.getElementById('pm-' + panel).classList.add('active');
         }
 
-        function updateAuthPlaceholder() {
+        function updateAuthFields() {
             const type = document.getElementById('authType').value;
-            const label = document.getElementById('authLabel');
-            const input = document.getElementById('authValue');
+            const basicFields = document.getElementById('basicAuthFields');
+            const bearerField = document.getElementById('bearerAuthField');
+
             if (type === 'basic') {
-                label.innerText = 'Credentials (username:password)';
-                input.placeholder = 'admin:your_pdi_password';
-                input.disabled = false;
+                basicFields.style.display = 'block';
+                bearerField.style.display = 'none';
             } else if (type === 'bearer') {
-                label.innerText = 'OAuth Access Token';
-                input.placeholder = 'Paste ServiceNow OAuth Bearer Token';
-                input.disabled = false;
+                basicFields.style.display = 'none';
+                bearerField.style.display = 'block';
             } else {
-                label.innerText = 'No Authorization Required';
-                input.placeholder = 'Disabled';
-                input.disabled = true;
+                basicFields.style.display = 'none';
+                bearerField.style.display = 'none';
             }
         }
 
@@ -573,53 +589,12 @@ app.get('/', (req, res) => {
             bodyField.disabled = (method === 'GET' || method === 'DELETE');
         }
 
-        let inboundTriggered = false;
         let inboundData = [];
         let outboundData = [];
 
         function updateLogCount() {
             const total = inboundData.length + outboundData.length;
             document.getElementById('logCount').innerText = total;
-        }
-
-        // Single-Trigger Inbound
-        async function triggerInboundOnce() {
-            if (inboundTriggered) return;
-            inboundTriggered = true;
-
-            const btn = document.getElementById('inbound-btn');
-            btn.disabled = true;
-            btn.innerText = 'Inbound Payload Sent (1/1)';
-
-            const table = document.getElementById('inbTable').value;
-            const event = document.getElementById('inbEvent').value;
-
-            try {
-                const res = await fetch('/api/v1/servicenow/inbound', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + '${SECURE_API_KEY}'
-                    },
-                    body: JSON.stringify({
-                        instance: 'dev-servicenow.service-now.com',
-                        table,
-                        event,
-                        number: 'INC00' + Math.floor(10000 + Math.random() * 90000),
-                        short_description: 'ServiceNow inbound webhook simulation payload',
-                        state: 'New',
-                        timestamp: new Date().toISOString()
-                    })
-                });
-                const data = await res.json();
-                if (res.ok && data.record) {
-                    inboundData.unshift(data.record);
-                    updateLogCount();
-                    renderLogs();
-                }
-            } catch (err) {
-                console.error(err);
-            }
         }
 
         let sendingRequest = false;
@@ -634,7 +609,9 @@ app.get('/', (req, res) => {
 
             const method = document.getElementById('httpMethod').value;
             const authType = document.getElementById('authType').value;
-            const authValue = document.getElementById('authValue').value;
+            const basicUser = document.getElementById('basicUser').value;
+            const basicPass = document.getElementById('basicPass').value;
+            const bearerToken = document.getElementById('bearerToken').value;
             const rawBody = document.getElementById('httpBody').value;
 
             const headers = {};
@@ -663,14 +640,14 @@ app.get('/', (req, res) => {
                 const res = await fetch('/api/v1/servicenow/outbound', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ method, url, authType, authValue, headers, body: parsedBody })
+                    body: JSON.stringify({ method, url, authType, basicUser, basicPass, bearerToken, headers, body: parsedBody })
                 });
                 const data = await res.json();
                 if (res.ok && data.record) {
                     outboundData.unshift(data.record);
                     updateLogCount();
                     renderLogs();
-                    // Automatically switch to logs to show result
+                    // Switch to logs tab automatically
                     document.querySelector('.nav-btn:nth-child(3)').click();
                 }
             } catch (err) {
@@ -717,7 +694,7 @@ app.get('/', (req, res) => {
                                 </div>
                                 <span style="color: var(--text-muted);">\${item.timestamp}</span>
                             </div>
-                            <div style="font-family: monospace; font-size: 12px; color: var(--accent-blue); margin-bottom: 8px; word-break: break-all;">\${item.url}</div>
+                            <div style="font-family: monospace; font-size: 12px; color: var(--cyan); margin-bottom: 8px; word-break: break-all;">\${item.url}</div>
                             <label style="margin-top: 8px;">Response Payload</label>
                             <pre>\${JSON.stringify(item.responsePayload, null, 2)}</pre>
                         </div>
