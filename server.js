@@ -4,32 +4,58 @@ const bodyParser = require('body-parser');
 const crypto = require('crypto');
 
 const app = express();
+app.disable('x-powered-by');
 const PORT = process.env.PORT || 3000;
-
-app.use(cors());
-app.use(bodyParser.json({ limit: '1mb' }));
 
 // ---- Settings ----
 const MAX_LOGS = 200;
+const MAX_DEVICES = 500;
+const BASIC_USERNAME = process.env.BASIC_USERNAME || 'nexrelay_admin'; // permanent username
 const INBOUND_TOKEN = process.env.INBOUND_TOKEN || '';
 const ALLOWED_HOSTS = (process.env.ALLOWED_HOSTS || '.service-now.com')
     .split(',').map(h => h.trim().toLowerCase()).filter(Boolean);
 const OUTBOUND_TIMEOUT_MS = 30000;
+const OAUTH_TOKEN_TTL_S = Number(process.env.OAUTH_TOKEN_TTL_S) || 3600; // lifetime of OAuth access tokens issued by the hub
+const OAUTH_MAX_TOKENS = 20;      // live tokens kept per workspace
+const DEVICE_ID_RE = /^sn_dev_[a-f0-9]{48}$/;
+const GLOBAL_ID = 'default_global';
 
-// Per-Device Log Store
-const deviceStores = {};
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Content-Security-Policy',
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
+        "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+    next();
+});
+app.use(cors());
+app.use(bodyParser.json({ limit: '1mb' }));
+app.use(bodyParser.urlencoded({ extended: false, limit: '20kb' })); // OAuth token requests are form-encoded
 
-function getStore(deviceToken) {
-    const token = (deviceToken && deviceToken.trim()) ? deviceToken.trim() : 'default_global';
-    if (!deviceStores[token]) {
-        deviceStores[token] = { inbound: [], outbound: [] };
-    }
-    return deviceStores[token];
+// ---- Stores ----
+// deviceStores: { [deviceId]: { inbound: [], outbound: [] } }
+// sessions:     { [deviceId]: { bearer, apiKey, password } }  (SHA-256 digests only)
+const deviceStores = new Map();
+const sessions = new Map();
+
+function evict(map) {
+    while (map.size > MAX_DEVICES) map.delete(map.keys().next().value);
 }
 
-function addLog(storeList, entry) {
-    storeList.unshift(entry);
-    if (storeList.length > MAX_LOGS) storeList.length = MAX_LOGS;
+function getStore(deviceId) {
+    const id = DEVICE_ID_RE.test(deviceId || '') ? deviceId : GLOBAL_ID;
+    let store = deviceStores.get(id);
+    if (!store) store = { inbound: [], outbound: [] };
+    deviceStores.delete(id);
+    deviceStores.set(id, store);
+    evict(deviceStores);
+    return store;
+}
+
+function addLog(list, entry) {
+    list.unshift(entry);
+    if (list.length > MAX_LOGS) list.length = MAX_LOGS;
 }
 
 function safeParse(text) {
@@ -48,47 +74,162 @@ function isAllowedUrl(rawUrl) {
     } catch { return false; }
 }
 
-// 1. ServiceNow Inbound REST Endpoint
-app.post(['/api/v1/servicenow/inbound/:deviceToken', '/api/v1/servicenow/inbound'], (req, res) => {
-    const routeToken = req.params.deviceToken;
-    const authHeader = req.headers['authorization'] || '';
-    const apiKeyHeader = req.headers['x-sn-apikey'] || req.headers['x-api-key'] || '';
-    const headerDeviceToken = req.headers['x-device-token'];
+// ---- Credential helpers ----
+const digest = v => crypto.createHash('sha256').update(String(v)).digest();
+const matches = (candidate, storedDigest) => crypto.timingSafeEqual(digest(candidate), storedDigest);
+const randomSecret = (prefix, bytes) => prefix + crypto.randomBytes(bytes).toString('hex');
+const newSyncId = prefix => prefix + crypto.randomInt(100000, 1000000);
 
-    let targetToken = routeToken || headerDeviceToken;
-    if (!targetToken && authHeader.startsWith('Bearer sn_dev_')) {
-        targetToken = authHeader.replace('Bearer ', '').trim();
+const sameText = (a, b) => crypto.timingSafeEqual(digest(a), digest(b));
+
+function hasValidOAuthToken(session, candidate) {
+    const now = Date.now();
+    session.tokens = session.tokens.filter(t => t.exp > now);
+    let ok = false;
+    for (const t of session.tokens) {
+        if (matches(candidate, t.digest)) ok = true; // no early exit: constant work per token
     }
+    return ok;
+}
 
-    const store = getStore(targetToken);
+// Returns the name of the method that authenticated the request, or null.
+// Supported: Bearer token, Basic auth, API key (header or query string), OAuth 2.0 client-credentials access token.
+function authenticateInbound(req, session) {
+    const auth = req.headers['authorization'] || '';
+    const headerKey = req.headers['x-sn-apikey'] || req.headers['x-api-key'] || '';
+    const queryKey = typeof req.query.api_key === 'string' ? req.query.api_key : '';
 
-    const tokenOk = INBOUND_TOKEN
-        ? authHeader === 'Bearer ' + INBOUND_TOKEN
-        : (authHeader && (authHeader.startsWith('Bearer sn_nex_') || authHeader.startsWith('Bearer sn_dev_') || authHeader.startsWith('Basic ') || apiKeyHeader.startsWith('sn_key_')));
+    if (INBOUND_TOKEN && auth === 'Bearer ' + INBOUND_TOKEN) return 'Static Bearer Token';
+    if (!session) return null;
 
-    if (!tokenOk && !routeToken) {
-        return res.status(401).json({ 
-            status: 'Error', 
-            message: 'Authentication failed: Provide a valid ServiceNow Bearer Token, Basic Auth credentials, or API Key.' 
+    if (auth.startsWith('Bearer ')) {
+        const candidate = auth.slice(7).trim();
+        if (candidate && matches(candidate, session.bearer)) return 'Bearer Token';
+        if (candidate && hasValidOAuthToken(session, candidate)) return 'OAuth 2.0 (Client Credentials)';
+    }
+    if (auth.startsWith('Basic ')) {
+        const decoded = Buffer.from(auth.slice(6).trim(), 'base64').toString('utf8');
+        const idx = decoded.indexOf(':');
+        if (idx > -1) {
+            const user = decoded.slice(0, idx);
+            const pass = decoded.slice(idx + 1);
+            if (sameText(user, BASIC_USERNAME) && matches(pass, session.password)) return 'Basic Auth';
+        }
+    }
+    if (headerKey && matches(headerKey, session.apiKey)) return 'API Key (Header)';
+    if (queryKey && matches(queryKey, session.apiKey)) return 'API Key (Query)';
+    return null;
+}
+
+function deviceFrom(req, res) {
+    const id = String(req.headers['x-device-token'] || '').trim();
+    if (!DEVICE_ID_RE.test(id)) {
+        res.status(400).json({ status: 'Error', message: 'Missing or invalid X-Device-Token header.' });
+        return null;
+    }
+    return id;
+}
+
+// 0. Credential issuing: a brand-new random key, token and password on every call (page load)
+app.post('/api/v1/servicenow/session', (req, res) => {
+    const deviceId = String((req.body && req.body.deviceId) || '');
+    if (!DEVICE_ID_RE.test(deviceId)) {
+        return res.status(400).json({ status: 'Error', message: 'Invalid deviceId.' });
+    }
+    const creds = {
+        username: BASIC_USERNAME,                              // permanent
+        clientId: 'nexrelay_' + deviceId.slice(7, 19),         // stable per workspace
+        password: randomSecret('sn_pass_', 16),                // rotates
+        apiKey: randomSecret('sn_key_', 20),                   // rotates
+        bearer: randomSecret('sn_nex_', 24),                   // rotates
+        clientSecret: randomSecret('sn_sec_', 24)              // rotates
+    };
+    // Replacing the record also revokes every OAuth access token issued earlier.
+    sessions.delete(deviceId);
+    sessions.set(deviceId, {
+        bearer: digest(creds.bearer),
+        apiKey: digest(creds.apiKey),
+        password: digest(creds.password),
+        clientId: digest(creds.clientId),
+        clientSecret: digest(creds.clientSecret),
+        tokens: []
+    });
+    evict(sessions);
+    res.set('Cache-Control', 'no-store');
+    res.json({ ...creds, tokenTtlSeconds: OAUTH_TOKEN_TTL_S, allowedHosts: ALLOWED_HOSTS });
+});
+
+// 0b. OAuth 2.0 token endpoint (client_credentials grant) - what ServiceNow's OAuth profile calls
+app.post('/api/v1/servicenow/oauth/token/:deviceToken', (req, res) => {
+    res.set({ 'Cache-Control': 'no-store', Pragma: 'no-cache' });
+    const id = String(req.params.deviceToken || '');
+    const session = DEVICE_ID_RE.test(id) ? sessions.get(id) : null;
+    const body = req.body || {};
+
+    if (body.grant_type !== 'client_credentials') {
+        return res.status(400).json({
+            error: 'unsupported_grant_type',
+            error_description: 'Only the client_credentials grant is supported.'
         });
     }
 
-    const syncId = "SN-INB-" + Math.floor(100000 + Math.random() * 900000);
-    const timestamp = new Date().toISOString();
+    // Client credentials may arrive in the form body or as HTTP Basic (client_id:client_secret)
+    let clientId = typeof body.client_id === 'string' ? body.client_id : '';
+    let clientSecret = typeof body.client_secret === 'string' ? body.client_secret : '';
+    const auth = req.headers['authorization'] || '';
+    if (auth.startsWith('Basic ')) {
+        const decoded = Buffer.from(auth.slice(6).trim(), 'base64').toString('utf8');
+        const idx = decoded.indexOf(':');
+        if (idx > -1) { clientId = decoded.slice(0, idx); clientSecret = decoded.slice(idx + 1); }
+    }
 
+    const valid = session && clientId && clientSecret &&
+        matches(clientId, session.clientId) && matches(clientSecret, session.clientSecret);
+    if (!valid) {
+        res.set('WWW-Authenticate', 'Basic realm="NexRelay OAuth"');
+        return res.status(401).json({ error: 'invalid_client', error_description: 'Unknown client or wrong secret. Credentials rotate on every page load.' });
+    }
+
+    const accessToken = randomSecret('sn_oat_', 24);
+    session.tokens = session.tokens
+        .filter(t => t.exp > Date.now())
+        .concat({ digest: digest(accessToken), exp: Date.now() + OAUTH_TOKEN_TTL_S * 1000 })
+        .slice(-OAUTH_MAX_TOKENS);
+    console.log(`[ServiceNow OAuth] Device: ${id} | access token issued`);
+
+    res.json({ access_token: accessToken, token_type: 'Bearer', expires_in: OAUTH_TOKEN_TTL_S });
+});
+
+// 1. ServiceNow Inbound REST Endpoint (workspace-scoped URL; credentials are always enforced)
+app.post(['/api/v1/servicenow/inbound/:deviceToken', '/api/v1/servicenow/inbound'], (req, res) => {
+    const requested = String(req.params.deviceToken || req.headers['x-device-token'] || '').trim();
+    if (requested && !DEVICE_ID_RE.test(requested)) {
+        return res.status(400).json({ status: 'Error', message: 'Invalid device token in URL or X-Device-Token header.' });
+    }
+
+    const session = requested ? sessions.get(requested) : null;
+    const authMethod = authenticateInbound(req, session);
+    if (!authMethod) {
+        res.set('WWW-Authenticate', 'Bearer realm="NexRelay"');
+        return res.status(401).json({
+            status: 'Error',
+            message: 'Authentication failed: use the current Bearer token, Basic credentials, API key or OAuth 2.0 access token shown in the hub. Credentials rotate on every page load.'
+        });
+    }
+
+    const store = getStore(requested);
+    const syncId = newSyncId('SN-INB-');
     const inboundEntry = {
         id: syncId,
         direction: 'INBOUND',
-        authMethod: 'ServiceNow Webhook',
-        timestamp,
-        headers: {
-            'content-type': req.headers['content-type']
-        },
+        authMethod,
+        timestamp: new Date().toISOString(),
+        headers: { 'content-type': req.headers['content-type'] },
         payload: req.body
     };
 
     addLog(store.inbound, inboundEntry);
-    console.log(`[ServiceNow Inbound] Device: ${targetToken || 'Global'} | ID: ${syncId}`);
+    console.log(`[ServiceNow Inbound] Device: ${requested || 'Global'} | ID: ${syncId} | ${authMethod}`);
 
     res.status(200).json({
         status: 'Success',
@@ -97,16 +238,18 @@ app.post(['/api/v1/servicenow/inbound/:deviceToken', '/api/v1/servicenow/inbound
     });
 });
 
-// 2. Postman-Style Outbound HTTP Proxy
+// 2. Outbound HTTP Proxy (isolated per device, restricted to allowed hosts)
 app.post('/api/v1/servicenow/outbound', async (req, res) => {
-    const { method, url, authType, basicUser, basicPass, bearerToken, apiKeyHeaderName, apiKeyValue, headers, body } = req.body;
-    const deviceToken = req.headers['x-device-token'];
-    const store = getStore(deviceToken);
+    const deviceId = deviceFrom(req, res);
+    if (!deviceId) return;
+    const store = getStore(deviceId);
+
+    const { method, url, authType, basicUser, basicPass, bearerToken, apiKeyHeaderName, apiKeyValue, headers, body } = req.body || {};
 
     if (!url || !method) {
-        return res.status(400).json({ 
-            status: 'Error', 
-            message: 'Validation Error: Both HTTP Method and Target Endpoint URL are required to execute the request.' 
+        return res.status(400).json({
+            status: 'Error',
+            message: 'Validation Error: Both HTTP Method and Target Endpoint URL are required to execute the request.'
         });
     }
 
@@ -117,7 +260,7 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
         });
     }
 
-    const syncId = "SN-OUT-" + Math.floor(100000 + Math.random() * 900000);
+    const syncId = newSyncId('SN-OUT-');
     const timestamp = new Date().toISOString();
     const startTime = Date.now();
 
@@ -143,11 +286,11 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
     }
 
     const fetchOptions = {
-        method: method.toUpperCase(),
+        method: String(method).toUpperCase(),
         headers: requestHeaders
     };
 
-    if (['POST', 'PUT', 'PATCH'].includes(method.toUpperCase()) && body) {
+    if (['POST', 'PUT', 'PATCH'].includes(fetchOptions.method) && body) {
         fetchOptions.body = typeof body === 'string' ? body : JSON.stringify(body);
     }
 
@@ -187,7 +330,7 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
     const outboundEntry = {
         id: syncId,
         direction: 'OUTBOUND',
-        method: method.toUpperCase(),
+        method: fetchOptions.method,
         url,
         status: `${responseStatus} ${statusText}`,
         statusCode: responseStatus,
@@ -199,934 +342,1040 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
     };
 
     addLog(store.outbound, outboundEntry);
-    console.log(`[ServiceNow Outbound] Device: ${deviceToken || 'Global'} | ${method.toUpperCase()} ${url} -> ${responseStatus}`);
+    console.log(`[ServiceNow Outbound] Device: ${deviceId} | ${fetchOptions.method} ${url} -> ${responseStatus}`);
 
-    res.status(200).json({
-        status: 'Completed',
-        record: outboundEntry
-    });
+    res.status(200).json({ status: 'Completed', record: outboundEntry });
 });
 
-// 2b. Device-Scoped Logs Endpoints
+// 2b. Device-scoped log endpoints
 app.get('/api/v1/servicenow/logs', (req, res) => {
-    const deviceToken = req.headers['x-device-token'];
-    const store = getStore(deviceToken);
+    const deviceId = deviceFrom(req, res);
+    if (!deviceId) return;
+    const store = getStore(deviceId);
+    res.set('Cache-Control', 'no-store');
     res.json({ inbound: store.inbound, outbound: store.outbound });
 });
 
+// Delete ALL records for this device
 app.delete('/api/v1/servicenow/logs', (req, res) => {
-    const deviceToken = req.headers['x-device-token'];
-    const store = getStore(deviceToken);
+    const deviceId = deviceFrom(req, res);
+    if (!deviceId) return;
+    const store = getStore(deviceId);
+    const deleted = store.inbound.length + store.outbound.length;
     store.inbound = [];
     store.outbound = [];
-    res.json({ status: 'Cleared' });
+    res.json({ status: 'Cleared', deleted });
 });
 
+// Delete ONE record
 app.delete('/api/v1/servicenow/logs/:id', (req, res) => {
-    const deviceToken = req.headers['x-device-token'];
-    const store = getStore(deviceToken);
+    const deviceId = deviceFrom(req, res);
+    if (!deviceId) return;
+    const store = getStore(deviceId);
     const targetId = req.params.id;
 
-    const initialInboundLen = store.inbound.length;
-    const initialOutboundLen = store.outbound.length;
-
+    const before = store.inbound.length + store.outbound.length;
     store.inbound = store.inbound.filter(item => item.id !== targetId);
     store.outbound = store.outbound.filter(item => item.id !== targetId);
 
-    if (store.inbound.length === initialInboundLen && store.outbound.length === initialOutboundLen) {
+    if (store.inbound.length + store.outbound.length === before) {
         return res.status(404).json({ status: 'Error', message: 'Record not found in this device session.' });
     }
-
-    res.json({ status: 'Success', message: `Record ${targetId} deleted.` });
+    res.json({ status: 'Success', message: `Record ${targetId} deleted.`, deleted: 1 });
 });
 
 app.get('/health', (req, res) => {
     res.json({ status: 'ok', uptimeSeconds: Math.round(process.uptime()) });
 });
 
-// 3. Masterpiece Frontend (Fresh Key on Refresh, Read-Only Auth, Separate Bearer Section)
-app.get('/', (req, res) => {
-    res.send(`<!DOCTYPE html>
+// 3. Frontend
+const PAGE = String.raw`<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NexRelay | Masterpiece ServiceNow Integration Hub</title>
-    <style>
-        :root {
-            --bg: #030409;
-            --surface: #0a0e1a;
-            --surface-card: rgba(16, 22, 40, 0.82);
-            --surface-elevated: #18223c;
-            --border: rgba(99, 102, 241, 0.22);
-            --border-hover: rgba(99, 102, 241, 0.5);
-            --indigo: #6366f1;
-            --indigo-glow: rgba(99, 102, 241, 0.35);
-            --cyan: #38bdf8;
-            --cyan-glow: rgba(56, 189, 248, 0.3);
-            --emerald: #10b981;
-            --danger: #f43f5e;
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NexRelay · ServiceNow Integration Hub</title>
+<style>
+:root{
+  --bg:#f3f5f8;--surface:#ffffff;--surface-2:#f8fafc;--border:#e3e8ef;--border-strong:#cbd5e1;
+  --text:#0f172a;--muted:#64748b;--accent:#0a7d5c;--accent-hover:#086a4e;--accent-ink:#ffffff;--accent-soft:#e6f4ef;
+  --danger:#dc2626;--danger-hover:#b91c1c;--danger-soft:#fef2f2;--ok:#15803d;--ok-soft:#ecfdf3;
+  --warn:#b45309;--warn-soft:#fffbeb;--info:#1d4ed8;--info-soft:#eff6ff;
+  --side:#0b1a1f;--side-text:#9fb3b8;--side-active:#12302f;
+  --shadow:0 1px 2px rgba(15,23,42,.05),0 1px 3px rgba(15,23,42,.08);
+  --shadow-lg:0 20px 40px rgba(15,23,42,.22);
+  --blue:#1a56db;--blue-bg:#e8f0fe;--blue-bd:#bcd0fb;
+  --violet:#6d28d9;--violet-bg:#f1e9ff;--violet-bd:#d9c6fb;
+  --amber:#b45309;--amber-bg:#fff4e0;--amber-bd:#f6d9a6;
+  --green:#0a7d5c;--green-bg:#e6f4ef;--green-bd:#bfe3d4;
+  --rose:#be123c;--rose-bg:#ffe9ee;--rose-bd:#f8c3cf;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  color-scheme:light dark;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0b1115;--surface:#111a20;--surface-2:#0d161b;--border:#1f2c34;--border-strong:#2c3c47;
+    --text:#e6edf3;--muted:#8b9db0;--accent:#2dbd8c;--accent-hover:#25a47a;--accent-ink:#04130d;--accent-soft:#0f2b25;
+    --danger:#f87171;--danger-hover:#ef4444;--danger-soft:#2a1416;--ok:#4ade80;--ok-soft:#0f2a1a;
+    --warn:#fbbf24;--warn-soft:#2b210d;--info:#60a5fa;--info-soft:#0f1d33;
+    --side:#080f13;--side-active:#102a2a;--shadow:0 1px 2px rgba(0,0,0,.4);--shadow-lg:0 20px 40px rgba(0,0,0,.6);
+    --blue:#7fb0ff;--blue-bg:#11223f;--blue-bd:#1d3a6b;
+    --violet:#b79cff;--violet-bg:#231a3d;--violet-bd:#3a2c63;
+    --amber:#fbbf24;--amber-bg:#2b210d;--amber-bd:#4a3a14;
+    --green:#4ade80;--green-bg:#0f2b25;--green-bd:#1d4a3c;
+    --rose:#fb7185;--rose-bg:#2c121a;--rose-bd:#52202c;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+[hidden]{display:none!important}
+button{font:inherit}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.icon{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
-        * { box-sizing: border-box; cursor: none !important; }
+.app{display:grid;grid-template-columns:256px minmax(0,1fr);min-height:100vh}
+.sidebar{background:var(--side);color:var(--side-text);display:flex;flex-direction:column;padding:20px 14px;position:sticky;top:0;height:100vh}
+.brand{display:flex;align-items:center;gap:12px;padding:4px 8px 24px}
+.brand-mark{width:36px;height:36px;border-radius:9px;background:linear-gradient(135deg,#0a7d5c,#2dbd8c);display:grid;place-items:center;color:#fff}
+.brand-mark .icon{width:20px;height:20px}
+.brand strong{display:block;color:#fff;font-size:15px;letter-spacing:.2px}
+.brand span{font-size:12px}
+.nav{display:flex;flex-direction:column;gap:4px}
+.nav-label{font-size:11px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;padding:0 12px 8px;color:#6b8288}
+.nav-item{display:flex;align-items:center;gap:12px;width:100%;padding:10px 12px;border:0;border-radius:8px;background:transparent;color:var(--side-text);font-weight:500;text-align:left;cursor:pointer;transition:background .15s,color .15s}
+.nav-item:hover{background:rgba(255,255,255,.05);color:#fff}
+.nav-item.active{background:var(--side-active);color:#fff;box-shadow:inset 3px 0 0 var(--accent)}
+.count{margin-left:auto;min-width:22px;padding:1px 7px;border-radius:999px;background:rgba(255,255,255,.12);color:#fff;font-size:11px;font-weight:600;text-align:center}
+.side-foot{margin-top:auto;padding:14px 12px 0;border-top:1px solid rgba(255,255,255,.08);font-size:12px}
+.side-foot .lbl{text-transform:uppercase;letter-spacing:.8px;font-size:10px;color:#6b8288;margin-bottom:4px}
+.side-foot code{display:block;color:#cfe0e3;font-family:var(--mono);margin-bottom:12px}
+.btn-side{width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:transparent;color:#cfe0e3;cursor:pointer;font-weight:500}
+.btn-side:hover{background:rgba(255,255,255,.07);color:#fff}
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
-            background: var(--bg);
-            color: var(--text-main);
-            margin: 0;
-            padding: 36px 24px;
-            min-height: 100vh;
-            overflow-x: hidden;
-            position: relative;
-        }
+.main{padding:28px 36px 56px;width:100%;max-width:1180px}
+.topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:24px}
+.topbar h1{margin:0;font-size:22px;font-weight:650;letter-spacing:-.2px}
+.topbar p{margin:4px 0 0;color:var(--muted)}
+.status{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border:1px solid var(--border);border-radius:999px;background:var(--surface);font-size:12px;font-weight:600;white-space:nowrap}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.status.ok .dot{background:var(--ok);box-shadow:0 0 0 3px var(--ok-soft)}
+.status.bad .dot{background:var(--danger);box-shadow:0 0 0 3px var(--danger-soft)}
 
-        #bgCanvas {
-            position: fixed;
-            top: 0; left: 0; width: 100vw; height: 100vh;
-            pointer-events: none;
-            z-index: -3;
-        }
+.panel{display:none}
+.panel.active{display:block;animation:rise .25s ease}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 
-        .aurora-layer {
-            position: fixed;
-            inset: -50%;
-            width: 200%;
-            height: 200%;
-            pointer-events: none;
-            z-index: -2;
-            background: 
-                radial-gradient(circle at 30% 30%, rgba(99, 102, 241, 0.16) 0%, transparent 35%),
-                radial-gradient(circle at 70% 65%, rgba(56, 189, 248, 0.14) 0%, transparent 35%),
-                radial-gradient(circle at 45% 80%, rgba(16, 185, 129, 0.09) 0%, transparent 30%);
-            animation: auroraDrift 18s ease-in-out infinite alternate;
-        }
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);margin-bottom:20px}
+.card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 22px;border-bottom:1px solid var(--border)}
+.card-head h2{margin:0;font-size:15px;font-weight:600}
+.card-head p{margin:2px 0 0;color:var(--muted);font-size:13px}
+.card-body{padding:22px}
 
-        .cyber-grid {
-            position: fixed;
-            inset: 0;
-            pointer-events: none;
-            z-index: -1;
-            background-image: 
-                linear-gradient(to right, rgba(99, 102, 241, 0.04) 1px, transparent 1px),
-                linear-gradient(to bottom, rgba(99, 102, 241, 0.04) 1px, transparent 1px);
-            background-size: 48px 48px;
-            mask-image: radial-gradient(ellipse at center, black 40%, transparent 85%);
-            -webkit-mask-image: radial-gradient(ellipse at center, black 40%, transparent 85%);
-            animation: gridPulse 8s ease-in-out infinite alternate;
-        }
+label{display:block;margin-bottom:6px;font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.2px}
+.field{margin-bottom:18px}
+.field:last-child{margin-bottom:0}
+input,select,textarea{width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border-strong);border-radius:8px;padding:9px 12px;font:inherit}
+textarea{font-family:var(--mono);font-size:12.5px;resize:vertical;min-height:140px}
+textarea:disabled{opacity:.55}
+input::placeholder,textarea::placeholder{color:var(--muted);opacity:.7}
+.input-group{display:flex;align-items:stretch;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface-2);overflow:hidden}
+.input-group:focus-within{outline:2px solid var(--accent);outline-offset:1px}
+.input-group input{border:0;background:transparent;border-radius:0;font-family:var(--mono);font-size:13px}
+.input-group input:focus-visible{outline:none}
+.icon-btn{display:inline-grid;place-items:center;width:40px;flex:none;border:0;border-left:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:background .15s,color .15s}
+.icon-btn:hover{background:var(--accent-soft);color:var(--accent)}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 
-        @keyframes auroraDrift {
-            0% { transform: translate(0, 0) rotate(0deg) scale(1); }
-            50% { transform: translate(-4%, 3%) rotate(4deg) scale(1.05); }
-            100% { transform: translate(4%, -4%) rotate(-4deg) scale(1.08); }
-        }
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:9px 16px;border-radius:8px;border:1px solid transparent;font-weight:600;cursor:pointer;white-space:nowrap;transition:background .15s,border-color .15s,color .15s}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.btn-sm{padding:6px 12px;font-size:13px}
+.btn-primary{background:var(--accent);color:var(--accent-ink)}
+.btn-primary:hover:not(:disabled){background:var(--accent-hover)}
+.btn-secondary{background:var(--surface);color:var(--text);border-color:var(--border-strong)}
+.btn-secondary:hover:not(:disabled){background:var(--surface-2)}
+.btn-danger{background:var(--danger);color:#fff}
+.btn-danger:hover:not(:disabled){background:var(--danger-hover)}
+.btn-danger-ghost{background:transparent;color:var(--danger);border-color:var(--border-strong)}
+.btn-danger-ghost:hover:not(:disabled){background:var(--danger-soft);border-color:var(--danger)}
 
-        @keyframes gridPulse {
-            0% { opacity: 0.5; }
-            100% { opacity: 1; }
-        }
+.seg{display:inline-flex;padding:3px;gap:2px;background:var(--surface-2);border:1px solid var(--border);border-radius:9px;margin-bottom:20px}
+.seg button{border:0;background:transparent;padding:6px 14px;border-radius:7px;font-weight:500;color:var(--muted);cursor:pointer}
+.seg button:hover{color:var(--text)}
+.seg button.active{background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
 
-        .cursor-dot {
-            position: fixed; top: 0; left: 0; width: 8px; height: 8px;
-            background: var(--cyan); border-radius: 50%;
-            pointer-events: none; z-index: 99999;
-            transform: translate(-50%, -50%);
-            box-shadow: 0 0 14px var(--cyan);
-            transition: transform 0.08s ease;
-        }
-        .cursor-outline {
-            position: fixed; top: 0; left: 0; width: 40px; height: 40px;
-            border: 1px solid rgba(99, 102, 241, 0.55); border-radius: 50%;
-            pointer-events: none; z-index: 99998;
-            transform: translate(-50%, -50%);
-            transition: width 0.25s ease, height 0.25s ease, border-color 0.25s ease, background 0.25s ease;
-            background: rgba(99, 102, 241, 0.04);
-        }
-        body.hovering .cursor-outline {
-            width: 56px; height: 56px;
-            border-color: var(--cyan);
-            background: rgba(56, 189, 248, 0.12);
-        }
+.url-bar{display:grid;grid-template-columns:120px minmax(0,1fr) auto;gap:10px;margin-bottom:22px}
+.url-bar select{font-weight:700}
+.url-bar input{font-family:var(--mono);font-size:13px}
+.header-row{display:grid;grid-template-columns:1fr 1fr 40px;gap:10px;margin-bottom:10px}
+.header-row .icon-btn{border:1px solid var(--border-strong);border-radius:8px}
+.hint{margin:10px 0 0;color:var(--muted);font-size:12px}
+.hint b{color:var(--text);font-weight:600}
 
-        .container { max-width: 1200px; margin: 0 auto; position: relative; z-index: 1; }
+/* Read-only, colour-coded header/scheme/parameter names (kept separate from the secret itself) */
+.tag{font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:.2px;text-align:center;cursor:default;border:1px solid;user-select:all}
+.tag-blue{color:var(--blue);background:var(--blue-bg);border-color:var(--blue-bd)}
+.tag-violet{color:var(--violet);background:var(--violet-bg);border-color:var(--violet-bd)}
+.tag-amber{color:var(--amber);background:var(--amber-bg);border-color:var(--amber-bd)}
+.tag-green{color:var(--green);background:var(--green-bg);border-color:var(--green-bd)}
+.tag-rose{color:var(--rose);background:var(--rose-bg);border-color:var(--rose-bd)}
+.auth-row{display:grid;grid-template-columns:170px 120px minmax(0,1fr);gap:12px;align-items:end;margin-bottom:14px}
+.auth-row.two{grid-template-columns:170px minmax(0,1fr)}
+.auth-row.opt{grid-template-columns:130px 170px minmax(0,1fr)}
+.auth-row .field{margin-bottom:0}
+.note-cell{padding:9px 0;color:var(--muted);font-size:13px}
+.note-cell code{font-family:var(--mono);color:var(--text)}
+.opt-title{margin:22px 0 10px;font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--muted)}
+.panel-actions{margin:2px 0 4px}
+@media (max-width:900px){.auth-row,.auth-row.two,.auth-row.opt{grid-template-columns:1fr}}
 
-        @keyframes heavyFadeIn {
-            from { opacity: 0; transform: translateY(20px) scale(0.99); }
-            to { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        .animate-in { animation: heavyFadeIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.note{display:flex;gap:10px;align-items:flex-start;padding:10px 14px;border-radius:8px;background:var(--warn-soft);color:var(--warn);font-size:13px;margin-bottom:20px}
 
-        header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding-bottom: 24px;
-            border-bottom: 1px solid var(--border);
-            margin-bottom: 28px;
-        }
-        .brand h1 {
-            margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;
-            display: flex; align-items: center; gap: 10px; color: #fff;
-        }
-        .brand h1 span { color: var(--indigo); text-shadow: 0 0 25px var(--indigo-glow); }
-        .brand p { margin: 6px 0 0 0; font-size: 13px; color: var(--text-muted); }
+.toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+.toolbar .seg{margin:0}
+.spacer{flex:1}
+.log{background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);margin-bottom:14px;overflow:hidden}
+.log-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px 18px}
+.log-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.log-id{font-family:var(--mono);font-size:12.5px;font-weight:600}
+.log-meta{color:var(--muted);font-size:12px}
+.log-actions{display:flex;align-items:center;gap:12px}
+.log-url{padding:0 18px 12px;font-family:var(--mono);font-size:12px;color:var(--muted);word-break:break-all}
+.log details{border-top:1px solid var(--border)}
+.log summary{padding:10px 18px;cursor:pointer;color:var(--muted);font-size:13px;font-weight:500;user-select:none}
+.log summary:hover{color:var(--text)}
+.block{padding:0 18px 16px}
+.block-label{margin-bottom:6px;font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)}
+pre{margin:0;padding:14px 16px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;font:12px/1.55 var(--mono);overflow:auto;max-height:360px;white-space:pre-wrap;word-break:break-word}
+.trunc{margin-top:6px;font-size:12px;color:var(--warn)}
+.badge{display:inline-flex;align-items:center;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.2px}
+.b-info{background:var(--info-soft);color:var(--info)}
+.b-ok{background:var(--ok-soft);color:var(--ok)}
+.b-warn{background:var(--warn-soft);color:var(--warn)}
+.b-err{background:var(--danger-soft);color:var(--danger)}
+.b-neutral{background:var(--surface-2);color:var(--muted);border:1px solid var(--border)}
+.empty{display:grid;place-items:center;gap:8px;text-align:center;padding:56px 20px;border:1px dashed var(--border-strong);border-radius:12px;color:var(--muted);background:var(--surface)}
+.empty .icon{width:28px;height:28px}
+.empty strong{color:var(--text)}
 
-        .status-badge {
-            display: flex; align-items: center; gap: 9px;
-            background: rgba(99, 102, 241, 0.12);
-            border: 1px solid rgba(99, 102, 241, 0.35);
-            color: var(--cyan);
-            padding: 7px 16px; border-radius: 999px;
-            font-size: 12px; font-weight: 600;
-            backdrop-filter: blur(8px);
-            box-shadow: 0 0 20px rgba(99, 102, 241, 0.15);
-        }
-        .status-dot {
-            width: 8px; height: 8px; background: var(--cyan); border-radius: 50%;
-            animation: pulseDot 2s infinite;
-        }
-        @keyframes pulseDot {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.8); }
-            50% { box-shadow: 0 0 0 9px rgba(56, 189, 248, 0); }
-        }
+.toasts{position:fixed;right:20px;bottom:20px;display:flex;flex-direction:column;gap:10px;z-index:60}
+.toast{min-width:240px;max-width:380px;padding:12px 16px;border-radius:10px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-left:4px solid var(--info);box-shadow:var(--shadow-lg);font-size:13px;animation:rise .2s ease}
+.toast.success{border-left-color:var(--ok)}
+.toast.error{border-left-color:var(--danger)}
+.toast.out{opacity:0;transform:translateY(6px);transition:all .25s}
+.modal{position:fixed;inset:0;background:rgba(2,8,12,.6);display:grid;place-items:center;padding:20px;z-index:80}
+.dialog{width:100%;max-width:420px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;box-shadow:var(--shadow-lg)}
+.dialog h3{margin:0 0 8px;font-size:16px}
+.dialog p{margin:0 0 22px;color:var(--muted)}
+.dialog .actions{display:flex;justify-content:flex-end;gap:10px}
 
-        .nav-tabs {
-            display: flex; gap: 12px; margin-bottom: 28px;
-        }
-        .nav-btn {
-            background: rgba(10, 14, 26, 0.85);
-            backdrop-filter: blur(8px);
-            border: 1px solid var(--border);
-            color: var(--text-muted);
-            padding: 12px 24px; border-radius: 10px;
-            font-size: 13px; font-weight: 600;
-            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-        .nav-btn:hover { border-color: var(--border-hover); color: #fff; transform: translateY(-1px); }
-        .nav-btn.active {
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(56, 189, 248, 0.12));
-            border-color: var(--indigo);
-            color: var(--cyan);
-            box-shadow: 0 6px 25px rgba(99, 102, 241, 0.25);
-        }
-
-        .workspace-panel { display: none; }
-        .workspace-panel.active { display: block; animation: heavyFadeIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-
-        .card {
-            background: var(--surface-card);
-            backdrop-filter: blur(14px);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 30px;
-            margin-bottom: 24px;
-            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.45);
-            transition: border-color 0.3s ease;
-        }
-        .card:hover { border-color: var(--border-hover); }
-        .card h2 { margin: 0 0 6px 0; font-size: 18px; font-weight: 600; color: #fff; }
-        .card .sub { font-size: 13px; color: var(--text-muted); margin: 0 0 24px 0; }
-
-        label {
-            display: block; font-size: 11px; font-weight: 700; color: var(--text-muted);
-            text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 8px;
-        }
-        input, select, textarea {
-            width: 100%; background: var(--bg); border: 1px solid var(--border);
-            color: var(--text-main); padding: 12px 16px; border-radius: 9px;
-            font-size: 13px; margin-bottom: 18px;
-            transition: border-color 0.2s ease, box-shadow 0.2s ease;
-        }
-        input:focus, select:focus, textarea:focus {
-            outline: none; border-color: var(--indigo);
-            box-shadow: 0 0 0 3px var(--indigo-glow);
-        }
-        input[readonly] {
-            background: rgba(3, 4, 9, 0.65);
-            color: var(--cyan);
-            cursor: not-allowed;
-        }
-        textarea { font-family: ui-monospace, monospace; font-size: 12px; resize: vertical; }
-
-        .secret-field-wrapper {
-            display: flex;
-            align-items: stretch;
-            background: var(--bg);
-            border: 1px solid var(--border);
-            border-radius: 9px;
-            overflow: hidden;
-            transition: border-color 0.2s ease, box-shadow 0.2s ease;
-        }
-        .secret-field-wrapper input {
-            flex: 1;
-            border: none;
-            background: transparent;
-            margin-bottom: 0;
-            padding: 12px 14px;
-            min-width: 0;
-        }
-        .secret-field-wrapper input:focus { box-shadow: none; }
-        .eye-btn {
-            background: rgba(24, 34, 60, 0.6);
-            border: none;
-            border-left: 1px solid var(--border);
-            color: var(--text-muted);
-            padding: 0 14px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: color 0.2s ease, background 0.2s ease;
-        }
-        .eye-btn:hover {
-            color: var(--cyan);
-            background: rgba(99, 102, 241, 0.15);
-        }
-        .eye-btn svg {
-            width: 16px;
-            height: 16px;
-            stroke: currentColor;
-            fill: none;
-            stroke-width: 2;
-            stroke-linecap: round;
-            stroke-linejoin: round;
-        }
-
-        .url-bar { display: flex; gap: 12px; margin-bottom: 20px; }
-        .url-bar select { width: 135px; margin-bottom: 0; font-weight: 700; color: var(--cyan); }
-        .url-bar input { flex: 1; margin-bottom: 0; font-family: ui-monospace, monospace; font-size: 12px; }
-        .url-bar button { width: auto; padding: 0 28px; white-space: nowrap; margin-bottom: 0; }
-
-        .pm-tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
-        .pm-tab {
-            background: none; border: none; color: var(--text-muted); font-size: 12px; font-weight: 600;
-            padding: 8px 2px 14px 2px; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s ease;
-        }
-        .pm-tab.active { color: var(--cyan); border-bottom-color: var(--indigo); }
-        .pm-panel { display: none; }
-        .pm-panel.active { display: block; animation: heavyFadeIn 0.3s ease; }
-
-        .header-row { display: grid; grid-template-columns: 1fr 1fr 40px; gap: 12px; margin-bottom: 12px; }
-        .header-row input { margin-bottom: 0; font-size: 12px; padding: 9px 14px; }
-        .icon-btn {
-            background: var(--surface-elevated); border: 1px solid var(--border); color: var(--text-muted);
-            border-radius: 9px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center;
-        }
-        .icon-btn:hover { color: var(--danger); border-color: var(--danger); }
-
-        .btn-primary {
-            width: 100%; background: linear-gradient(135deg, var(--indigo), #4f46e5);
-            color: #fff; border: none; padding: 13px 20px; border-radius: 10px;
-            font-weight: 700; font-size: 13px; cursor: pointer;
-            box-shadow: 0 6px 20px var(--indigo-glow);
-            transition: transform 0.2s ease, filter 0.2s ease;
-        }
-        .btn-primary:hover:not(:disabled) { filter: brightness(1.12); transform: translateY(-1px); }
-        .btn-primary:disabled { background: var(--surface-elevated); color: var(--text-muted); cursor: not-allowed; box-shadow: none; }
-
-        .btn-delete-record {
-            background: rgba(244, 63, 94, 0.12);
-            border: 1px solid rgba(244, 63, 94, 0.35);
-            color: var(--danger);
-            padding: 5px 12px;
-            border-radius: 6px;
-            font-size: 11px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        .btn-delete-record:hover {
-            background: rgba(244, 63, 94, 0.25);
-            border-color: var(--danger);
-        }
-
-        .log-card {
-            background: var(--surface-card); backdrop-filter: blur(12px);
-            border: 1px solid var(--border); border-radius: 14px;
-            padding: 22px; margin-bottom: 18px; animation: heavyFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-        .log-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; font-size: 12px; }
-        .badge {
-            padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 11px;
-            background: rgba(99, 102, 241, 0.2); color: var(--cyan);
-        }
-        .badge-ok { background: rgba(16, 185, 129, 0.2); color: #34d399; }
-        .badge-err { background: rgba(244, 63, 94, 0.2); color: var(--danger); }
-
-        pre {
-            background: var(--bg); border: 1px solid var(--border); border-radius: 9px;
-            padding: 16px; margin: 10px 0 0 0; font-size: 12px; color: #cbd5e1; overflow-x: auto;
-        }
-        .empty {
-            text-align: center; padding: 60px; color: var(--text-muted); font-size: 13px;
-            background: var(--surface-card); backdrop-filter: blur(12px);
-            border: 1px dashed var(--border); border-radius: 14px;
-        }
-    </style>
+@media (max-width:900px){
+  .app{grid-template-columns:1fr}
+  .sidebar{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 14px}
+  .brand{padding:0 8px 0 0}.nav-label,.side-foot{display:none}
+  .nav{flex-direction:row;flex-wrap:wrap}
+  .main{padding:20px 16px 48px}
+  .grid-2,.url-bar{grid-template-columns:1fr}
+  .topbar{flex-direction:column}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
 </head>
 <body>
-    <canvas id="bgCanvas"></canvas>
-    <div class="aurora-layer"></div>
-    <div class="cyber-grid"></div>
-    <div class="cursor-dot" id="cursorDot"></div>
-    <div class="cursor-outline" id="cursorOutline"></div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-in" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
+  <symbol id="i-out" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></symbol>
+  <symbol id="i-hex" viewBox="0 0 24 24"><path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M8 12h8"/><path d="M13 9l3 3-3 3"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></symbol>
+</svg>
 
-    <div class="container animate-in">
-        <header>
-            <div class="brand">
-                <h1>Nex<span>Relay</span> · ServiceNow Integration Hub</h1>
-                <p>Masterpiece Bi-Directional Table API & REST Proxy</p>
-            </div>
-            <div class="status-badge">
-                <div class="status-dot"></div>
-                Secure Gateway Online (<span id="deviceIdBadge" style="font-family: monospace;">Device Session</span>)
-            </div>
-        </header>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark"><svg class="icon"><use href="#i-hex"/></svg></div>
+      <div><strong>NexRelay</strong><span>Integration Hub</span></div>
+    </div>
+    <div class="nav-label">Workspace</div>
+    <nav class="nav" aria-label="Primary">
+      <button type="button" class="nav-item active" data-panel="inbound"><svg class="icon"><use href="#i-in"/></svg>Inbound webhook</button>
+      <button type="button" class="nav-item" data-panel="outbound"><svg class="icon"><use href="#i-out"/></svg>Outbound client</button>
+      <button type="button" class="nav-item" data-panel="logs"><svg class="icon"><use href="#i-list"/></svg>Execution logs<span class="count" id="logCount">0</span></button>
+    </nav>
+    <div class="side-foot">
+      <div class="lbl">Workspace ID</div>
+      <code id="deviceIdBadge">—</code>
+      <button type="button" class="btn-side" id="newSessionBtn">New workspace</button>
+    </div>
+  </aside>
 
-        <!-- Navigation Tabs -->
-        <div class="nav-tabs">
-            <button class="nav-btn active" onclick="switchPanel('inbound', this)">Inbound Link</button>
-            <button class="nav-btn" onclick="switchPanel('outbound', this)">Outbound HTTP Client</button>
-            <button class="nav-btn" id="tabLogs" onclick="switchPanel('logs', this)">Execution Logs (<span id="logCount">0</span>)</button>
+  <main class="main">
+    <header class="topbar">
+      <div><h1 id="pageTitle"></h1><p id="pageSub"></p></div>
+      <div class="status" id="statusPill"><span class="dot"></span><span id="statusText">Checking gateway…</span></div>
+    </header>
+
+    <!-- Inbound -->
+    <section id="panel-inbound" class="panel active">
+      <div class="card">
+        <div class="card-head"><div><h2>Webhook endpoint</h2><p>Send an HTTPS POST with a JSON body. Every request must authenticate with a credential below.</p></div></div>
+        <div class="card-body">
+          <div class="field">
+            <label for="inboundUrlBox">Endpoint URL</label>
+            <div class="input-group">
+              <input type="text" id="inboundUrlBox" readonly spellcheck="false">
+              <button type="button" class="icon-btn" data-copy="inboundUrlBox" data-label="Endpoint URL" title="Copy" aria-label="Copy endpoint URL"><svg class="icon"><use href="#i-copy"/></svg></button>
+            </div>
+          </div>
         </div>
+      </div>
 
-        <!-- Panel 1: Inbound Link (Separate Bearer Section + Read-Only Auth) -->
-        <div id="panel-inbound" class="workspace-panel active">
-            <div class="card" style="max-width: 740px;">
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
-                    <div>
-                        <h2>Inbound Webhook Endpoint</h2>
-                        <p class="sub" style="margin-bottom: 0;">Refreshing this page automatically generates a fresh random key and session workspace.</p>
-                    </div>
-                </div>
-
-                <label>Secured Device-Scoped Inbound Webhook URL (Read-Only)</label>
-                <div style="display: flex; gap: 10px; margin-bottom: 22px;">
-                    <input type="text" id="inboundUrlBox" readonly style="margin-bottom: 0; font-family: monospace;" />
-                    <button class="btn-primary" style="width: auto; padding: 0 24px;" onclick="copyText('inboundUrlBox', 'Inbound Webhook Link')">Copy Link</button>
-                </div>
-
-                <!-- Dedicated Separate Bearer Token Section -->
-                <div style="background: rgba(99, 102, 241, 0.05); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-top: 10px;">
-                    <label style="color: var(--cyan); font-size: 12px; margin-bottom: 10px;">Dedicated Bearer Token</label>
-                    <div style="display: flex; gap: 10px;">
-                        <div class="secret-field-wrapper" style="flex: 1;">
-                            <input type="password" id="authHeaderBox" readonly style="font-family: monospace; color: var(--text-main);" />
-                            <button type="button" class="eye-btn" title="Show/Hide Token" onclick="toggleVisibility('authHeaderBox', this)">
-                                <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                            </button>
-                        </div>
-                        <button class="btn-primary" style="width: auto; padding: 0 20px;" onclick="copyText('authHeaderBox', 'Bearer Header')">Copy</button>
-                    </div>
-                </div>
-            </div>
+      <div class="card">
+        <div class="card-head">
+          <div><h2>Credentials</h2><p>A new token, password, API key and client secret are issued on every page load. Older ones stop working immediately.</p></div>
+          <button type="button" class="btn btn-secondary btn-sm" id="rotateBtn"><svg class="icon"><use href="#i-refresh"/></svg>Rotate now</button>
         </div>
+        <div class="card-body">
+          <div class="seg" role="tablist" aria-label="Authentication method">
+            <button type="button" class="active" data-tab-group="cred" data-tab-target="cred-bearer">Bearer token</button>
+            <button type="button" data-tab-group="cred" data-tab-target="cred-basic">Basic auth</button>
+            <button type="button" data-tab-group="cred" data-tab-target="cred-key">API key</button>
+            <button type="button" data-tab-group="cred" data-tab-target="cred-oauth">OAuth 2.0</button>
+          </div>
 
-        <!-- Panel 2: Outbound HTTP Client -->
-        <div id="panel-outbound" class="workspace-panel">
-            <div class="card">
-                <h2>Postman-Grade Outbound HTTP Proxy</h2>
-                <p class="sub">Execute authenticated requests against your ServiceNow Table API or Scripted REST APIs.</p>
-
-                <div class="url-bar">
-                    <select id="httpMethod" onchange="toggleBodyState()">
-                        <option value="GET">GET</option>
-                        <option value="POST" selected>POST</option>
-                        <option value="PUT">PUT</option>
-                        <option value="PATCH">PATCH</option>
-                        <option value="DELETE">DELETE</option>
-                    </select>
-                    <input type="url" id="httpUrl" placeholder="https://dev12345.service-now.com/api/now/table/incident" required />
-                    <button class="btn-primary" id="send-btn" onclick="sendOutboundRequest()">Send Request</button>
+          <!-- Bearer: Authorization + Bearer are separate, read-only, colour-coded; the token is its own field -->
+          <div class="tab-panel" data-panel-group="cred" id="cred-bearer">
+            <div class="auth-row">
+              <div class="field">
+                <label for="bearerHeaderName">Header</label>
+                <input type="text" id="bearerHeaderName" class="tag tag-blue" value="Authorization" readonly aria-readonly="true" spellcheck="false">
+              </div>
+              <div class="field">
+                <label for="bearerScheme">Scheme</label>
+                <input type="text" id="bearerScheme" class="tag tag-violet" value="Bearer" readonly aria-readonly="true" spellcheck="false">
+              </div>
+              <div class="field">
+                <label for="bearerBox">Token</label>
+                <div class="input-group">
+                  <input type="password" id="bearerBox" readonly autocomplete="new-password" spellcheck="false" placeholder="Issuing…">
+                  <button type="button" class="icon-btn" data-reveal="bearerBox" title="Show / hide" aria-label="Show or hide token"><svg class="icon"><use href="#i-eye"/></svg></button>
+                  <button type="button" class="icon-btn" data-copy="bearerBox" data-label="Bearer token" title="Copy token" aria-label="Copy token"><svg class="icon"><use href="#i-copy"/></svg></button>
                 </div>
+              </div>
+            </div>
+            <div class="panel-actions">
+              <button type="button" class="btn btn-secondary btn-sm" data-copy-header><svg class="icon"><use href="#i-copy"/></svg>Copy header value</button>
+            </div>
+            <p class="hint">In ServiceNow, add an HTTP header named <b>Authorization</b> to the REST message with the value <b>Bearer</b>, a space, then the token.</p>
+          </div>
 
-                <div class="pm-tabs">
-                    <button class="pm-tab active" onclick="switchPmTab('auth', this)">Authorization</button>
-                    <button class="pm-tab" onclick="switchPmTab('headers', this)">Headers</button>
-                    <button class="pm-tab" onclick="switchPmTab('body', this)">Body (JSON)</button>
+          <div class="tab-panel" data-panel-group="cred" id="cred-basic" hidden>
+            <div class="grid-2">
+              <div class="field">
+                <label for="basicUserBox">Username (permanent)</label>
+                <div class="input-group">
+                  <input type="text" id="basicUserBox" readonly spellcheck="false" placeholder="Issuing…">
+                  <button type="button" class="icon-btn" data-copy="basicUserBox" data-label="Username" title="Copy" aria-label="Copy username"><svg class="icon"><use href="#i-copy"/></svg></button>
                 </div>
-
-                <div id="pm-auth" class="pm-panel active">
-                    <label>Auth Type</label>
-                    <select id="authType" onchange="updateAuthFields()">
-                        <option value="basic">Basic Auth (Separate Username & Password)</option>
-                        <option value="bearer">Bearer Token (OAuth 2.0)</option>
-                        <option value="apikey">API Key (Custom Header)</option>
-                        <option value="none">No Auth</option>
-                    </select>
-
-                    <div id="basicAuthFields">
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-                            <div>
-                                <label>Username</label>
-                                <input type="text" id="basicUser" placeholder="admin" style="margin-bottom: 0;" />
-                            </div>
-                            <div>
-                                <label>Password</label>
-                                <div class="secret-field-wrapper">
-                                    <input type="password" id="basicPass" placeholder="your_pdi_password" />
-                                    <button type="button" class="eye-btn" title="Show/Hide Password" onclick="toggleVisibility('basicPass', this)">
-                                        <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div id="bearerAuthField" style="display: none;">
-                        <label>OAuth Access Token</label>
-                        <div class="secret-field-wrapper">
-                            <input type="password" id="bearerToken" placeholder="Paste ServiceNow OAuth Bearer Token" />
-                            <button type="button" class="eye-btn" title="Show/Hide Token" onclick="toggleVisibility('bearerToken', this)">
-                                <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div id="apiKeyAuthFields" style="display: none;">
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-                            <div>
-                                <label>Header Name</label>
-                                <input type="text" id="apiKeyHeaderName" value="x-sn-apikey" style="margin-bottom: 0;" />
-                            </div>
-                            <div>
-                                <label>API Key Value</label>
-                                <div class="secret-field-wrapper">
-                                    <input type="password" id="apiKeyValue" placeholder="Paste ServiceNow API Key" />
-                                    <button type="button" class="eye-btn" title="Show/Hide API Key" onclick="toggleVisibility('apiKeyValue', this)">
-                                        <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+              </div>
+              <div class="field">
+                <label for="basicPassBox">Password</label>
+                <div class="input-group">
+                  <input type="password" id="basicPassBox" readonly autocomplete="new-password" spellcheck="false" placeholder="Issuing…">
+                  <button type="button" class="icon-btn" data-reveal="basicPassBox" title="Show / hide" aria-label="Show or hide password"><svg class="icon"><use href="#i-eye"/></svg></button>
+                  <button type="button" class="icon-btn" data-copy="basicPassBox" data-label="Password" title="Copy" aria-label="Copy password"><svg class="icon"><use href="#i-copy"/></svg></button>
                 </div>
+              </div>
+            </div>
+            <p class="hint">In ServiceNow, set the REST message Authentication type to <b>Basic</b> and use a Basic auth profile with these credentials.</p>
+          </div>
 
-                <div id="pm-headers" class="pm-panel">
-                    <div id="headersList">
-                        <div class="header-row">
-                            <input type="text" placeholder="Key" value="Accept" class="h-key" />
-                            <input type="text" placeholder="Value" value="application/json" class="h-val" />
-                            <button type="button" class="icon-btn" onclick="this.parentElement.remove()">&times;</button>
-                        </div>
-                    </div>
-                    <button type="button" class="nav-btn" style="padding: 8px 16px; font-size: 12px; margin-top: 8px;" onclick="addHeaderRow()">+ Add Header</button>
+          <div class="tab-panel" data-panel-group="cred" id="cred-key" hidden>
+            <div class="field">
+              <label for="apiKeyBox">API key</label>
+              <div class="input-group">
+                <input type="password" id="apiKeyBox" readonly autocomplete="new-password" spellcheck="false" placeholder="Issuing…">
+                <button type="button" class="icon-btn" data-reveal="apiKeyBox" title="Show / hide" aria-label="Show or hide API key"><svg class="icon"><use href="#i-eye"/></svg></button>
+                <button type="button" class="icon-btn" data-copy="apiKeyBox" data-label="API key" title="Copy" aria-label="Copy API key"><svg class="icon"><use href="#i-copy"/></svg></button>
+              </div>
+            </div>
+
+            <div class="opt-title">Send it as one of</div>
+            <div class="auth-row opt">
+              <div class="field">
+                <label for="keyViaHeader">Delivery</label>
+                <input type="text" id="keyViaHeader" class="tag tag-amber" value="HTTP header" readonly aria-readonly="true">
+              </div>
+              <div class="field">
+                <label for="keyHeaderName">Header name</label>
+                <input type="text" id="keyHeaderName" class="tag tag-green" value="x-sn-apikey" readonly aria-readonly="true" spellcheck="false">
+              </div>
+              <div class="note-cell">The header value is the API key. <code>x-api-key</code> is accepted as well.</div>
+            </div>
+            <div class="auth-row opt">
+              <div class="field">
+                <label for="keyViaQuery">Delivery</label>
+                <input type="text" id="keyViaQuery" class="tag tag-amber" value="Query string" readonly aria-readonly="true">
+              </div>
+              <div class="field">
+                <label for="keyQueryName">Parameter</label>
+                <input type="text" id="keyQueryName" class="tag tag-rose" value="api_key" readonly aria-readonly="true" spellcheck="false">
+              </div>
+              <div class="field">
+                <label for="apiQueryBox">Full URL with key</label>
+                <div class="input-group">
+                  <input type="password" id="apiQueryBox" readonly autocomplete="new-password" spellcheck="false" placeholder="Issuing…">
+                  <button type="button" class="icon-btn" data-reveal="apiQueryBox" title="Show / hide" aria-label="Show or hide URL"><svg class="icon"><use href="#i-eye"/></svg></button>
+                  <button type="button" class="icon-btn" data-copy="apiQueryBox" data-label="URL with API key" title="Copy" aria-label="Copy URL with key"><svg class="icon"><use href="#i-copy"/></svg></button>
                 </div>
+              </div>
+            </div>
+            <p class="hint">In ServiceNow, add the key as an HTTP header on the REST message, or as a query parameter on the endpoint URL. Prefer the header: query strings can end up in proxy and server logs.</p>
+          </div>
 
-                <div id="pm-body" class="pm-panel">
-                    <label>Raw JSON Body</label>
-                    <textarea id="httpBody" rows="6">{
-  "short_description": "Elite automated incident created via NexRelay Hub",
+          <div class="tab-panel" data-panel-group="cred" id="cred-oauth" hidden>
+            <div class="auth-row two">
+              <div class="field">
+                <label for="oauthGrant">Grant type</label>
+                <input type="text" id="oauthGrant" class="tag tag-violet" value="client_credentials" readonly aria-readonly="true" spellcheck="false">
+              </div>
+              <div class="field">
+                <label for="oauthUrlBox">Token URL</label>
+                <div class="input-group">
+                  <input type="text" id="oauthUrlBox" readonly spellcheck="false">
+                  <button type="button" class="icon-btn" data-copy="oauthUrlBox" data-label="Token URL" title="Copy" aria-label="Copy token URL"><svg class="icon"><use href="#i-copy"/></svg></button>
+                </div>
+              </div>
+            </div>
+            <div class="grid-2">
+              <div class="field">
+                <label for="oauthIdBox">Client ID (stable for this workspace)</label>
+                <div class="input-group">
+                  <input type="text" id="oauthIdBox" readonly spellcheck="false" placeholder="Issuing…">
+                  <button type="button" class="icon-btn" data-copy="oauthIdBox" data-label="Client ID" title="Copy" aria-label="Copy client ID"><svg class="icon"><use href="#i-copy"/></svg></button>
+                </div>
+              </div>
+              <div class="field">
+                <label for="oauthSecretBox">Client secret</label>
+                <div class="input-group">
+                  <input type="password" id="oauthSecretBox" readonly autocomplete="new-password" spellcheck="false" placeholder="Issuing…">
+                  <button type="button" class="icon-btn" data-reveal="oauthSecretBox" title="Show / hide" aria-label="Show or hide client secret"><svg class="icon"><use href="#i-eye"/></svg></button>
+                  <button type="button" class="icon-btn" data-copy="oauthSecretBox" data-label="Client secret" title="Copy" aria-label="Copy client secret"><svg class="icon"><use href="#i-copy"/></svg></button>
+                </div>
+              </div>
+            </div>
+            <p class="hint">In ServiceNow, set the REST message Authentication type to <b>OAuth 2.0</b> and point its OAuth profile at this token URL with the client ID and secret. The hub accepts the credentials in the form body or as HTTP Basic. Access tokens last one hour and are revoked when you refresh this page.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div><h2>Quick test</h2><p>A ready-to-run cURL command for the method selected above.</p></div>
+          <button type="button" class="btn btn-secondary btn-sm" data-copy="curlBox" data-label="cURL command"><svg class="icon"><use href="#i-copy"/></svg>Copy</button>
+        </div>
+        <div class="card-body"><pre id="curlBox">Issuing credentials…</pre></div>
+      </div>
+    </section>
+
+    <!-- Outbound -->
+    <section id="panel-outbound" class="panel">
+      <div class="card">
+        <div class="card-head"><div><h2>Request builder</h2><p>Run authenticated calls against your ServiceNow Table API or Scripted REST APIs.</p></div></div>
+        <div class="card-body">
+          <div class="url-bar">
+            <select id="httpMethod" aria-label="HTTP method">
+              <option>GET</option><option selected>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option>
+            </select>
+            <input type="url" id="httpUrl" placeholder="https://dev12345.service-now.com/api/now/table/incident" spellcheck="false" aria-label="Request URL">
+            <button type="button" class="btn btn-primary" id="sendBtn"><svg class="icon"><use href="#i-send"/></svg>Send request</button>
+          </div>
+
+          <div class="seg" role="tablist" aria-label="Request sections">
+            <button type="button" class="active" data-tab-group="pm" data-tab-target="pm-auth">Authorization</button>
+            <button type="button" data-tab-group="pm" data-tab-target="pm-headers">Headers</button>
+            <button type="button" data-tab-group="pm" data-tab-target="pm-body">Body</button>
+          </div>
+
+          <div class="tab-panel" data-panel-group="pm" id="pm-auth">
+            <div class="field">
+              <label for="authType">Auth type</label>
+              <select id="authType">
+                <option value="basic">Basic auth</option>
+                <option value="bearer">Bearer token (OAuth 2.0)</option>
+                <option value="apikey">API key (custom header)</option>
+                <option value="none">No auth</option>
+              </select>
+            </div>
+            <div id="basicAuthFields" class="grid-2">
+              <div class="field"><label for="basicUser">Username</label><input type="text" id="basicUser" placeholder="admin" autocomplete="off"></div>
+              <div class="field">
+                <label for="basicPass">Password</label>
+                <div class="input-group">
+                  <input type="password" id="basicPass" placeholder="Instance password" autocomplete="new-password">
+                  <button type="button" class="icon-btn" data-reveal="basicPass" title="Show / hide" aria-label="Show or hide password"><svg class="icon"><use href="#i-eye"/></svg></button>
+                </div>
+              </div>
+            </div>
+            <div id="bearerAuthField" class="field" hidden>
+              <label for="bearerToken">Access token</label>
+              <div class="input-group">
+                <input type="password" id="bearerToken" placeholder="Paste OAuth bearer token" autocomplete="new-password">
+                <button type="button" class="icon-btn" data-reveal="bearerToken" title="Show / hide" aria-label="Show or hide token"><svg class="icon"><use href="#i-eye"/></svg></button>
+              </div>
+            </div>
+            <div id="apiKeyAuthFields" class="grid-2" hidden>
+              <div class="field"><label for="apiKeyHeaderName">Header name</label><input type="text" id="apiKeyHeaderName" value="x-sn-apikey" autocomplete="off"></div>
+              <div class="field">
+                <label for="apiKeyValue">API key</label>
+                <div class="input-group">
+                  <input type="password" id="apiKeyValue" placeholder="Paste API key" autocomplete="new-password">
+                  <button type="button" class="icon-btn" data-reveal="apiKeyValue" title="Show / hide" aria-label="Show or hide key"><svg class="icon"><use href="#i-eye"/></svg></button>
+                </div>
+              </div>
+            </div>
+            <p class="hint" id="hostHint">Requests are restricted to approved HTTPS ServiceNow hosts.</p>
+          </div>
+
+          <div class="tab-panel" data-panel-group="pm" id="pm-headers" hidden>
+            <div id="headersList"></div>
+            <button type="button" class="btn btn-secondary btn-sm" id="addHeaderBtn">+ Add header</button>
+          </div>
+
+          <div class="tab-panel" data-panel-group="pm" id="pm-body" hidden>
+            <label for="httpBody">Raw JSON body</label>
+            <textarea id="httpBody" rows="8" spellcheck="false">{
+  "short_description": "Incident created via NexRelay Hub",
   "urgency": "2",
   "impact": "2",
   "category": "software"
 }</textarea>
-                </div>
-            </div>
+          </div>
         </div>
+      </div>
+    </section>
 
-        <!-- Panel 3: Execution Logs -->
-        <div id="panel-logs" class="workspace-panel">
-            <div class="card" style="background: transparent; border: none; padding: 0; box-shadow: none;">
-                <h2>Execution History & Diagnostics</h2>
-                <p class="sub">Real-time audit trail of inbound webhook receptions and outbound proxy responses for this device session.</p>
-                <button type="button" class="nav-btn" style="padding: 8px 16px; font-size: 12px; margin-bottom: 18px;" onclick="clearLogs()">Clear Device Logs</button>
-                <div id="logsContainer">
-                    <div class="empty">No execution logs recorded in this device session yet.</div>
-                </div>
-            </div>
+    <!-- Logs -->
+    <section id="panel-logs" class="panel">
+      <div class="toolbar">
+        <div class="seg" role="tablist" aria-label="Filter logs" style="margin:0">
+          <button type="button" class="active" data-filter="all">All</button>
+          <button type="button" data-filter="inbound">Inbound</button>
+          <button type="button" data-filter="outbound">Outbound</button>
         </div>
+        <div class="spacer"></div>
+        <button type="button" class="btn btn-danger-ghost btn-sm" id="clearAllBtn"><svg class="icon"><use href="#i-trash"/></svg>Delete all records</button>
+      </div>
+      <div id="logsList"></div>
+    </section>
+  </main>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<div class="modal" id="modal" hidden>
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <h3 id="modalTitle"></h3>
+    <p id="modalBody"></p>
+    <div class="actions">
+      <button type="button" class="btn btn-secondary" id="modalCancel">Cancel</button>
+      <button type="button" class="btn btn-primary" id="modalConfirm">Confirm</button>
     </div>
+  </div>
+</div>
 
-    <script>
-        function randomHex(bytes) {
-            return Array.from(crypto.getRandomValues(new Uint8Array(bytes)))
-                .map(b => b.toString(16).padStart(2, '0')).join('');
-        }
+<script>
+(function () {
+  'use strict';
 
-        // Generate a fresh random device session key on every page refresh/load
-        const deviceToken = 'sn_dev_' + randomHex(24);
+  var API = '/api/v1/servicenow';
+  var DEVICE_RE = /^sn_dev_[a-f0-9]{48}$/;
+  var MAX_RENDER_CHARS = 50000;
+  var PAGES = {
+    inbound: ['Inbound webhook', 'Receive ServiceNow payloads on a secured, workspace-scoped endpoint.'],
+    outbound: ['Outbound HTTP client', 'Send authenticated requests to your ServiceNow instance.'],
+    logs: ['Execution logs', 'Audit trail of inbound and outbound traffic for this workspace.']
+  };
+  var state = { deviceId: '', creds: null, credTab: 'cred-bearer', inbound: [], outbound: [], filter: 'all', sending: false, sig: '', open: {} };
 
-        // Populate read-only inbound fields
-        document.getElementById('inboundUrlBox').value = window.location.origin + '/api/v1/servicenow/inbound/' + deviceToken;
-        document.getElementById('authHeaderBox').value = 'Authorization: Bearer ' + deviceToken;
-        document.getElementById('deviceIdBadge').innerText = deviceToken.slice(0, 12) + '...';
+  function $(id) { return document.getElementById(id); }
+  function esc(v) {
+    return String(v === undefined || v === null ? '' : v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function hex(n) {
+    var a = new Uint8Array(n);
+    crypto.getRandomValues(a);
+    return Array.prototype.map.call(a, function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+  }
+  function formatTime(iso) {
+    var d = new Date(iso);
+    return isNaN(d) ? esc(iso) : esc(d.toLocaleString());
+  }
 
-        function copyText(elementId, label) {
-            const box = document.getElementById(elementId);
-            navigator.clipboard.writeText(box.value);
-            alert(label + ' copied to clipboard!');
-        }
+  /* ---------- toasts & dialogs ---------- */
+  function toast(msg, kind) {
+    var el = document.createElement('div');
+    el.className = 'toast ' + (kind || 'info');
+    el.textContent = msg;
+    $('toasts').appendChild(el);
+    setTimeout(function () {
+      el.classList.add('out');
+      setTimeout(function () { el.remove(); }, 260);
+    }, 3400);
+  }
 
-        const eyeOpenSvg = '<svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
-        const eyeOffSvg = '<svg viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+  var modalResolve = null;
+  function confirmDialog(opts) {
+    return new Promise(function (resolve) {
+      $('modalTitle').textContent = opts.title;
+      $('modalBody').textContent = opts.message;
+      var ok = $('modalConfirm');
+      ok.textContent = opts.confirmLabel || 'Confirm';
+      ok.className = 'btn ' + (opts.danger ? 'btn-danger' : 'btn-primary');
+      $('modal').hidden = false;
+      $('modalCancel').focus();
+      modalResolve = resolve;
+    });
+  }
+  function closeModal(result) {
+    $('modal').hidden = true;
+    if (modalResolve) { var r = modalResolve; modalResolve = null; r(result); }
+  }
 
-        function toggleVisibility(fieldId, btn) {
-            const field = document.getElementById(fieldId);
-            if (field.type === 'password') {
-                field.type = 'text';
-                btn.innerHTML = eyeOffSvg;
-            } else {
-                field.type = 'password';
-                btn.innerHTML = eyeOpenSvg;
-            }
-        }
+  /* ---------- clipboard ---------- */
+  function fallbackCopy(v) {
+    var t = document.createElement('textarea');
+    t.value = v; t.setAttribute('readonly', '');
+    t.style.position = 'fixed'; t.style.opacity = '0';
+    document.body.appendChild(t); t.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(t);
+    return ok;
+  }
+  function copyText(value, label) {
+    if (!value) { toast('Nothing to copy yet', 'error'); return; }
+    function done() { toast(label + ' copied to clipboard', 'success'); }
+    function fail() { toast('Copy failed - select the text and copy manually', 'error'); }
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(value).then(done, function () { fallbackCopy(value) ? done() : fail(); });
+    } else {
+      fallbackCopy(value) ? done() : fail();
+    }
+  }
 
-        // Heavy Interactive Neural Constellation & Data Pulse Background Animation
-        const canvas = document.getElementById('bgCanvas');
-        const ctx = canvas.getContext('2d');
-        let width, height;
-        let nodes = [];
-        let pointer = { x: -1000, y: -1000 };
+  /* ---------- navigation ---------- */
+  function showPanel(name) {
+    Array.prototype.forEach.call(document.querySelectorAll('.panel'), function (p) {
+      p.classList.toggle('active', p.id === 'panel-' + name);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.nav-item'), function (b) {
+      b.classList.toggle('active', b.getAttribute('data-panel') === name);
+    });
+    $('pageTitle').textContent = PAGES[name][0];
+    $('pageSub').textContent = PAGES[name][1];
+  }
 
-        function resizeCanvas() {
-            width = canvas.width = window.innerWidth;
-            height = canvas.height = window.innerHeight;
-        }
-        window.addEventListener('resize', resizeCanvas);
-        resizeCanvas();
+  function switchTab(btn) {
+    var group = btn.getAttribute('data-tab-group');
+    var target = btn.getAttribute('data-tab-target');
+    Array.prototype.forEach.call(document.querySelectorAll('[data-tab-group="' + group + '"]'), function (b) {
+      b.classList.toggle('active', b === btn);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-panel-group="' + group + '"]'), function (p) {
+      p.hidden = p.id !== target;
+    });
+    if (group === 'cred') { state.credTab = target; renderCurl(); }
+  }
 
-        window.addEventListener('mousemove', e => {
-            pointer.x = e.clientX;
-            pointer.y = e.clientY;
+  /* ---------- workspace & credentials ---------- */
+  function getDeviceId() {
+    var id = '';
+    try { id = localStorage.getItem('nex_device_token') || ''; } catch (e) { id = ''; }
+    if (!DEVICE_RE.test(id)) {
+      id = 'sn_dev_' + hex(24);
+      try { localStorage.setItem('nex_device_token', id); } catch (e) {}
+    }
+    // Credentials are no longer stored in the browser.
+    try {
+      ['nex_device_user', 'nex_device_pass', 'nex_device_apikey'].forEach(function (k) { localStorage.removeItem(k); });
+    } catch (e) {}
+    return id;
+  }
+
+  function renderCredentials() {
+    $('deviceIdBadge').textContent = state.deviceId.slice(0, 15) + '…';
+    var base = location.origin + API;
+    var url = base + '/inbound/' + state.deviceId;
+    $('inboundUrlBox').value = url;
+    $('oauthUrlBox').value = base + '/oauth/token/' + state.deviceId;
+    var c = state.creds;
+    if (!c) { renderCurl(); return; }
+    $('bearerBox').value = c.bearer;
+    $('basicUserBox').value = c.username;
+    $('basicPassBox').value = c.password;
+    $('apiKeyBox').value = c.apiKey;
+    $('apiQueryBox').value = url + '?api_key=' + c.apiKey;
+    $('oauthIdBox').value = c.clientId;
+    $('oauthSecretBox').value = c.clientSecret;
+    if (c.allowedHosts && c.allowedHosts.length) {
+      $('hostHint').textContent = 'Requests are restricted to HTTPS hosts matching: ' + c.allowedHosts.join(', ') + '.';
+    }
+    renderCurl();
+  }
+
+  function renderCurl() {
+    var box = $('curlBox');
+    var c = state.creds;
+    if (!c) { box.textContent = 'Issuing credentials…'; return; }
+    var url = $('inboundUrlBox').value;
+    var tail = "  -H 'Content-Type: application/json' \\\n" +
+      "  -d '{\"short_description\":\"Test payload from NexRelay\"}'";
+    var head = "curl -X POST '" + url + "' \\\n";
+    var out;
+    if (state.credTab === 'cred-basic') {
+      out = head + "  -u '" + c.username + ":" + c.password + "' \\\n" + tail;
+    } else if (state.credTab === 'cred-key') {
+      out = head + "  -H 'x-sn-apikey: " + c.apiKey + "' \\\n" + tail;
+    } else if (state.credTab === 'cred-oauth') {
+      out = "# 1) Request an access token\n" +
+        "curl -X POST '" + $('oauthUrlBox').value + "' \\\n" +
+        "  -d 'grant_type=client_credentials' \\\n" +
+        "  -d 'client_id=" + c.clientId + "' \\\n" +
+        "  -d 'client_secret=" + c.clientSecret + "'\n\n" +
+        "# 2) Call the webhook with the returned access_token\n" +
+        head + "  -H 'Authorization: Bearer <access_token>' \\\n" + tail;
+    } else {
+      out = head + "  -H 'Authorization: Bearer " + c.bearer + "' \\\n" + tail;
+    }
+    box.textContent = out;
+  }
+
+  function rotateCredentials(manual) {
+    return fetch(API + '/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: state.deviceId })
+    }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function (c) {
+      state.creds = c;
+      renderCredentials();
+      if (manual) toast('New credentials issued. Previous ones are revoked.', 'success');
+    }).catch(function (e) {
+      toast('Could not issue credentials: ' + e.message, 'error');
+    });
+  }
+
+  /* ---------- logs ---------- */
+  function signature(inb, out) {
+    return (inb[0] ? inb[0].id : '') + '|' + (out[0] ? out[0].id : '') + '|' + inb.length + '|' + out.length;
+  }
+
+  function loadLogs() {
+    if (document.hidden || !state.deviceId) return;
+    fetch(API + '/logs', { headers: { 'X-Device-Token': state.deviceId }, cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.inbound || !d.outbound) return;
+        var s = signature(d.inbound, d.outbound);
+        if (s === state.sig) return;
+        state.sig = s; state.inbound = d.inbound; state.outbound = d.outbound;
+        renderLogs();
+      }).catch(function () {});
+  }
+
+  function badge(text, cls) { return '<span class="badge ' + cls + '">' + esc(text) + '</span>'; }
+
+  function block(label, data) {
+    if (data === null || data === undefined || data === '') return '';
+    var text = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+    var cut = false;
+    if (text.length > MAX_RENDER_CHARS) { text = text.slice(0, MAX_RENDER_CHARS); cut = true; }
+    return '<div class="block"><div class="block-label">' + esc(label) + '</div><pre>' + esc(text) + '</pre>' +
+      (cut ? '<div class="trunc">Output truncated at ' + MAX_RENDER_CHARS.toLocaleString() + ' characters.</div>' : '') + '</div>';
+  }
+
+  function logCard(item) {
+    var inbound = item.direction === 'INBOUND';
+    var delBtn = '<button type="button" class="btn btn-danger-ghost btn-sm" data-delete="' + esc(item.id) + '">' +
+      '<svg class="icon"><use href="#i-trash"/></svg>Delete</button>';
+    var head, body;
+    if (inbound) {
+      head = badge('Inbound', 'b-info') + badge(item.authMethod || 'Authenticated', 'b-ok') + '<span class="log-id">' + esc(item.id) + '</span>';
+      body = block('Payload', item.payload);
+    } else {
+      var code = item.statusCode || 0;
+      var cls = code >= 200 && code < 300 ? 'b-ok' : (code >= 300 && code < 400 ? 'b-warn' : 'b-err');
+      head = badge(item.method, 'b-neutral') + badge(item.status, cls) + '<span class="log-id">' + esc(item.id) + '</span>' +
+        '<span class="log-meta">' + esc(item.durationMs) + ' ms</span>';
+      body = block('Request body', item.requestPayload) + block('Response', item.responsePayload);
+    }
+    var open = state.open[item.id] ? ' open' : '';
+    return '<article class="log">' +
+      '<div class="log-head"><div class="log-title">' + head + '</div>' +
+      '<div class="log-actions"><span class="log-meta">' + formatTime(item.timestamp) + '</span>' + delBtn + '</div></div>' +
+      (inbound ? '' : '<div class="log-url">' + esc(item.url) + '</div>') +
+      (body ? '<details data-id="' + esc(item.id) + '"' + open + '><summary>' + (inbound ? 'Payload' : 'Request &amp; response') + '</summary>' + body + '</details>' : '') +
+      '</article>';
+  }
+
+  function renderLogs() {
+    var all = state.outbound.concat(state.inbound).sort(function (a, b) {
+      return new Date(b.timestamp) - new Date(a.timestamp);
+    });
+    $('logCount').textContent = all.length;
+    $('clearAllBtn').disabled = all.length === 0;
+
+    var list = all.filter(function (i) {
+      return state.filter === 'all' || i.direction.toLowerCase() === state.filter;
+    });
+    if (!list.length) {
+      $('logsList').innerHTML = '<div class="empty"><svg class="icon"><use href="#i-list"/></svg>' +
+        '<strong>No records to show</strong><span>Inbound webhooks and outbound requests will appear here.</span></div>';
+      return;
+    }
+    $('logsList').innerHTML = list.map(logCard).join('');
+  }
+
+  function resetSignature() {
+    state.sig = signature(state.inbound, state.outbound);
+  }
+
+  function deleteRecord(id) {
+    confirmDialog({
+      title: 'Delete this record?',
+      message: 'Record ' + id + ' will be permanently removed from this workspace.',
+      confirmLabel: 'Delete record', danger: true
+    }).then(function (yes) {
+      if (!yes) return;
+      return fetch(API + '/logs/' + encodeURIComponent(id), { method: 'DELETE', headers: { 'X-Device-Token': state.deviceId } })
+        .then(function (r) {
+          if (r.ok) {
+            state.inbound = state.inbound.filter(function (i) { return i.id !== id; });
+            state.outbound = state.outbound.filter(function (i) { return i.id !== id; });
+            delete state.open[id];
+            resetSignature(); renderLogs();
+            toast('Record ' + id + ' deleted', 'success');
+          } else if (r.status === 404) {
+            state.sig = ''; loadLogs();
+            toast('That record was already removed', 'info');
+          } else {
+            toast('Could not delete the record', 'error');
+          }
         });
+    }).catch(function () { toast('Could not delete the record', 'error'); });
+  }
 
-        const NODE_COUNT = 65;
-        for (let i = 0; i < NODE_COUNT; i++) {
-            nodes.push({
-                x: Math.random() * width,
-                y: Math.random() * height,
-                vx: (Math.random() - 0.5) * 0.55,
-                vy: (Math.random() - 0.5) * 0.55,
-                radius: Math.random() * 2.2 + 1.2,
-                pulsePhase: Math.random() * Math.PI * 2,
-                isCyan: Math.random() > 0.65
-            });
-        }
-
-        function animateCanvas() {
-            ctx.clearRect(0, 0, width, height);
-
-            for (let i = 0; i < nodes.length; i++) {
-                const n = nodes[i];
-                n.x += n.vx;
-                n.y += n.vy;
-                n.pulsePhase += 0.03;
-
-                if (n.x < 0 || n.x > width) n.vx *= -1;
-                if (n.y < 0 || n.y > height) n.vy *= -1;
-
-                const dxMouse = pointer.x - n.x;
-                const dyMouse = pointer.y - n.y;
-                const distMouse = Math.hypot(dxMouse, dyMouse);
-                if (distMouse < 220) {
-                    n.x += dxMouse * 0.004;
-                    n.y += dyMouse * 0.004;
-                }
-
-                const glowAlpha = 0.35 + Math.sin(n.pulsePhase) * 0.25;
-                ctx.beginPath();
-                ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
-                ctx.fillStyle = n.isCyan 
-                    ? \`rgba(56, 189, 248, \${glowAlpha})\` 
-                    : \`rgba(99, 102, 241, \${glowAlpha + 0.1})\`;
-                ctx.fill();
-
-                for (let j = i + 1; j < nodes.length; j++) {
-                    const n2 = nodes[j];
-                    const dist = Math.hypot(n.x - n2.x, n.y - n2.y);
-                    if (dist < 155) {
-                        const lineAlpha = (1 - dist / 155) * 0.22;
-                        ctx.beginPath();
-                        ctx.moveTo(n.x, n.y);
-                        ctx.lineTo(n2.x, n2.y);
-                        ctx.strokeStyle = \`rgba(99, 102, 241, \${lineAlpha})\`;
-                        ctx.lineWidth = 1;
-                        ctx.stroke();
-                    }
-                }
-
-                if (distMouse < 180) {
-                    const mouseLineAlpha = (1 - distMouse / 180) * 0.35;
-                    ctx.beginPath();
-                    ctx.moveTo(n.x, n.y);
-                    ctx.lineTo(pointer.x, pointer.y);
-                    ctx.strokeStyle = \`rgba(56, 189, 248, \${mouseLineAlpha})\`;
-                    ctx.lineWidth = 1.1;
-                    ctx.stroke();
-                }
-            }
-            requestAnimationFrame(animateCanvas);
-        }
-        animateCanvas();
-
-        const dot = document.getElementById('cursorDot');
-        const outline = document.getElementById('cursorOutline');
-        let mouseX = 0, mouseY = 0, outlineX = 0, outlineY = 0;
-
-        window.addEventListener('mousemove', e => {
-            mouseX = e.clientX; mouseY = e.clientY;
-            dot.style.left = mouseX + 'px';
-            dot.style.top = mouseY + 'px';
+  function deleteAll() {
+    var total = state.inbound.length + state.outbound.length;
+    if (!total) { toast('There are no records to delete', 'info'); return; }
+    confirmDialog({
+      title: 'Delete all records?',
+      message: 'All ' + total + ' inbound and outbound records in this workspace will be permanently deleted. This cannot be undone.',
+      confirmLabel: 'Delete ' + total + ' records', danger: true
+    }).then(function (yes) {
+      if (!yes) return;
+      return fetch(API + '/logs', { method: 'DELETE', headers: { 'X-Device-Token': state.deviceId } })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
+        .then(function (d) {
+          state.inbound = []; state.outbound = []; state.open = {};
+          resetSignature(); renderLogs();
+          toast(d.deleted + ' record' + (d.deleted === 1 ? '' : 's') + ' deleted', 'success');
         });
+    }).catch(function () { toast('Could not delete the records', 'error'); });
+  }
 
-        function renderCursor() {
-            outlineX += (mouseX - outlineX) * 0.22;
-            outlineY += (mouseY - outlineY) * 0.22;
-            outline.style.left = outlineX + 'px';
-            outline.style.top = outlineY + 'px';
-            requestAnimationFrame(renderCursor);
-        }
-        renderCursor();
+  /* ---------- outbound ---------- */
+  function addHeaderRow(k, v) {
+    var row = document.createElement('div');
+    row.className = 'header-row';
+    row.innerHTML = '<input type="text" class="h-key" placeholder="Header name" aria-label="Header name">' +
+      '<input type="text" class="h-val" placeholder="Value" aria-label="Header value">' +
+      '<button type="button" class="icon-btn" data-remove-row title="Remove header" aria-label="Remove header"><svg class="icon"><use href="#i-trash"/></svg></button>';
+    row.querySelector('.h-key').value = k || '';
+    row.querySelector('.h-val').value = v || '';
+    $('headersList').appendChild(row);
+  }
 
-        function bindHoverListeners() {
-            document.querySelectorAll('button, input, select, textarea').forEach(el => {
-                el.addEventListener('mouseenter', () => document.body.classList.add('hovering'));
-                el.addEventListener('mouseleave', () => document.body.classList.remove('hovering'));
-            });
-        }
-        bindHoverListeners();
+  function updateAuthFields() {
+    var t = $('authType').value;
+    $('basicAuthFields').hidden = t !== 'basic';
+    $('bearerAuthField').hidden = t !== 'bearer';
+    $('apiKeyAuthFields').hidden = t !== 'apikey';
+  }
 
-        function switchPanel(panelId, btn) {
-            document.querySelectorAll('.workspace-panel').forEach(p => p.classList.remove('active'));
-            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-            document.getElementById('panel-' + panelId).classList.add('active');
-            btn.classList.add('active');
-        }
+  function updateBodyState() {
+    var m = $('httpMethod').value;
+    $('httpBody').disabled = (m === 'GET' || m === 'DELETE');
+  }
 
-        function switchPmTab(panel, btn) {
-            document.querySelectorAll('.pm-tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.pm-panel').forEach(p => p.classList.remove('active'));
-            btn.classList.add('active');
-            document.getElementById('pm-' + panel).classList.add('active');
-        }
+  function sendOutbound() {
+    if (state.sending) return;
+    var url = $('httpUrl').value.trim();
+    if (!url) { toast('Enter a target ServiceNow endpoint URL', 'error'); return; }
 
-        function updateAuthFields() {
-            const type = document.getElementById('authType').value;
-            document.getElementById('basicAuthFields').style.display = type === 'basic' ? 'block' : 'none';
-            document.getElementById('bearerAuthField').style.display = type === 'bearer' ? 'block' : 'none';
-            document.getElementById('apiKeyAuthFields').style.display = type === 'apikey' ? 'block' : 'none';
-        }
+    var method = $('httpMethod').value;
+    var rawBody = $('httpBody').value;
+    var headers = {};
+    Array.prototype.forEach.call(document.querySelectorAll('#headersList .header-row'), function (row) {
+      var k = row.querySelector('.h-key').value.trim();
+      var v = row.querySelector('.h-val').value.trim();
+      if (k) headers[k] = v;
+    });
 
-        function addHeaderRow() {
-            const row = document.createElement('div');
-            row.className = 'header-row';
-            row.innerHTML = \`
-                <input type="text" placeholder="Key" class="h-key" />
-                <input type="text" placeholder="Value" class="h-val" />
-                <button type="button" class="icon-btn" onclick="this.parentElement.remove()">&times;</button>
-            \`;
-            document.getElementById('headersList').appendChild(row);
-            bindHoverListeners();
-        }
+    var parsed = null;
+    if (['POST', 'PUT', 'PATCH'].indexOf(method) > -1 && rawBody.trim()) {
+      try { parsed = JSON.parse(rawBody); }
+      catch (e) { toast('The request body is not valid JSON', 'error'); return; }
+    }
 
-        function toggleBodyState() {
-            const method = document.getElementById('httpMethod').value;
-            const bodyField = document.getElementById('httpBody');
-            bodyField.disabled = (method === 'GET' || method === 'DELETE');
-        }
+    state.sending = true;
+    var btn = $('sendBtn');
+    btn.disabled = true;
+    btn.lastChild.textContent = 'Sending…';
 
-        let inboundData = [];
-        let outboundData = [];
+    fetch(API + '/outbound', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Device-Token': state.deviceId },
+      body: JSON.stringify({
+        method: method, url: url, authType: $('authType').value,
+        basicUser: $('basicUser').value, basicPass: $('basicPass').value,
+        bearerToken: $('bearerToken').value,
+        apiKeyHeaderName: $('apiKeyHeaderName').value, apiKeyValue: $('apiKeyValue').value,
+        headers: headers, body: parsed
+      })
+    }).then(function (res) {
+      return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+    }).then(function (r) {
+      if (r.ok && r.data.record) {
+        state.outbound.unshift(r.data.record);
+        resetSignature(); renderLogs();
+        var rec = r.data.record;
+        toast(rec.method + ' completed: ' + rec.status, rec.statusCode >= 200 && rec.statusCode < 300 ? 'success' : 'error');
+        showPanel('logs');
+      } else {
+        toast((r.data && r.data.message) || 'Request failed', 'error');
+      }
+    }).catch(function () {
+      toast('Could not reach the gateway', 'error');
+    }).then(function () {
+      state.sending = false;
+      btn.disabled = false;
+      btn.lastChild.textContent = 'Send request';
+    });
+  }
 
-        function updateLogCount() {
-            const total = inboundData.length + outboundData.length;
-            document.getElementById('logCount').innerText = total;
-        }
+  /* ---------- health ---------- */
+  function setStatus(ok) {
+    var pill = $('statusPill');
+    pill.classList.toggle('ok', ok);
+    pill.classList.toggle('bad', !ok);
+    $('statusText').textContent = ok ? 'Gateway online' : 'Gateway unreachable';
+  }
+  function checkHealth() {
+    fetch('/health', { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+      .then(function () { setStatus(true); }, function () { setStatus(false); });
+  }
 
-        let sendingRequest = false;
-        let lastLogSignature = '';
+  /* ---------- events ---------- */
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    var el;
 
-        function esc(value) {
-            return String(value === undefined || value === null ? '' : value)
-                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-        }
+    if ((el = t.closest('[data-copy-header]'))) {
+      if (!state.creds) { toast('Credentials are still being issued', 'error'); return; }
+      copyText('Bearer ' + state.creds.bearer, 'Authorization header value');
+      return;
+    }
+    if ((el = t.closest('[data-copy]'))) {
+      var src = $(el.getAttribute('data-copy'));
+      var val = (src.value !== undefined) ? src.value : src.textContent;
+      copyText(val, el.getAttribute('data-label') || 'Value');
+      return;
+    }
+    if ((el = t.closest('[data-reveal]'))) {
+      var f = $(el.getAttribute('data-reveal'));
+      f.type = f.type === 'password' ? 'text' : 'password';
+      return;
+    }
+    if ((el = t.closest('[data-tab-group]'))) { switchTab(el); return; }
+    if ((el = t.closest('[data-panel]'))) { showPanel(el.getAttribute('data-panel')); return; }
+    if ((el = t.closest('[data-filter]'))) {
+      state.filter = el.getAttribute('data-filter');
+      Array.prototype.forEach.call(document.querySelectorAll('[data-filter]'), function (b) { b.classList.toggle('active', b === el); });
+      renderLogs();
+      return;
+    }
+    if ((el = t.closest('[data-delete]'))) { deleteRecord(el.getAttribute('data-delete')); return; }
+    if ((el = t.closest('[data-remove-row]'))) { el.parentElement.remove(); return; }
+  });
 
-        function formatTime(iso) {
-            const d = new Date(iso);
-            return isNaN(d) ? esc(iso) : esc(d.toLocaleString());
-        }
+  document.addEventListener('toggle', function (e) {
+    var d = e.target;
+    if (d && d.matches && d.matches('details[data-id]')) state.open[d.getAttribute('data-id')] = d.open;
+  }, true);
 
-        async function clearLogs() {
-            if (!confirm('Delete all device logs from the server?')) return;
-            try {
-                await fetch('/api/v1/servicenow/logs', {
-                    method: 'DELETE',
-                    headers: { 'X-Device-Token': deviceToken }
-                });
-                lastLogSignature = '';
-                inboundData = [];
-                outboundData = [];
-                updateLogCount();
-                renderLogs();
-            } catch (e) { console.error(e); }
-        }
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !$('modal').hidden) closeModal(false);
+  });
 
-        async function deleteRecord(recordId) {
-            if (!confirm('Delete this record?')) return;
-            try {
-                const res = await fetch('/api/v1/servicenow/logs/' + encodeURIComponent(recordId), {
-                    method: 'DELETE',
-                    headers: { 'X-Device-Token': deviceToken }
-                });
-                if (res.ok) {
-                    inboundData = inboundData.filter(item => item.id !== recordId);
-                    outboundData = outboundData.filter(item => item.id !== recordId);
-                    lastLogSignature = (inboundData[0] ? inboundData[0].id : '') + '|' +
-                                      (outboundData[0] ? outboundData[0].id : '') + '|' +
-                                      inboundData.length + '|' + outboundData.length;
-                    updateLogCount();
-                    renderLogs();
-                } else {
-                    alert('Failed to delete record.');
-                }
-            } catch (e) { console.error(e); }
-        }
+  $('modalConfirm').addEventListener('click', function () { closeModal(true); });
+  $('modalCancel').addEventListener('click', function () { closeModal(false); });
+  $('modal').addEventListener('click', function (e) { if (e.target === $('modal')) closeModal(false); });
 
-        async function loadServerLogs() {
-            if (document.hidden) return;
-            try {
-                const res = await fetch('/api/v1/servicenow/logs', {
-                    headers: { 'X-Device-Token': deviceToken }
-                });
-                const data = await res.json();
-                const signature = (data.inbound[0] ? data.inbound[0].id : '') + '|' +
-                                  (data.outbound[0] ? data.outbound[0].id : '') + '|' +
-                                  data.inbound.length + '|' + data.outbound.length;
-                if (signature === lastLogSignature) return;
-                lastLogSignature = signature;
-                inboundData = data.inbound;
-                outboundData = data.outbound;
-                updateLogCount();
-                renderLogs();
-            } catch (e) { console.error(e); }
-        }
-        loadServerLogs();
-        setInterval(loadServerLogs, 3000);
+  $('rotateBtn').addEventListener('click', function () { rotateCredentials(true); });
+  $('clearAllBtn').addEventListener('click', deleteAll);
+  $('sendBtn').addEventListener('click', sendOutbound);
+  $('addHeaderBtn').addEventListener('click', function () { addHeaderRow('', ''); });
+  $('authType').addEventListener('change', updateAuthFields);
+  $('httpMethod').addEventListener('change', updateBodyState);
+  $('httpUrl').addEventListener('keydown', function (e) { if (e.key === 'Enter') sendOutbound(); });
 
-        async function sendOutboundRequest() {
-            if (sendingRequest) return;
-            const url = document.getElementById('httpUrl').value.trim();
-            if (!url) {
-                alert('Validation Error: Please enter a target ServiceNow endpoint URL.');
-                return;
-            }
+  $('newSessionBtn').addEventListener('click', function () {
+    confirmDialog({
+      title: 'Start a new workspace?',
+      message: 'You will get a new endpoint URL and an empty log history. The current URL will stop receiving traffic in this browser.',
+      confirmLabel: 'Create workspace'
+    }).then(function (yes) {
+      if (!yes) return;
+      state.deviceId = 'sn_dev_' + hex(24);
+      try { localStorage.setItem('nex_device_token', state.deviceId); } catch (e) {}
+      state.creds = null; state.inbound = []; state.outbound = []; state.open = {}; state.sig = '';
+      renderCredentials(); renderLogs();
+      rotateCredentials(false).then(function () { toast('New workspace created', 'success'); });
+    });
+  });
 
-            const method = document.getElementById('httpMethod').value;
-            const authType = document.getElementById('authType').value;
-            const basicUser = document.getElementById('basicUser').value;
-            const basicPass = document.getElementById('basicPass').value;
-            const bearerToken = document.getElementById('bearerToken').value;
-            const apiKeyHeaderName = document.getElementById('apiKeyHeaderName').value;
-            const apiKeyValue = document.getElementById('apiKeyValue').value;
-            const rawBody = document.getElementById('httpBody').value;
-
-            const headers = {};
-            document.querySelectorAll('#headersList .header-row').forEach(row => {
-                const k = row.querySelector('.h-key').value.trim();
-                const v = row.querySelector('.h-val').value.trim();
-                if (k) headers[k] = v;
-            });
-
-            let parsedBody = null;
-            if (['POST', 'PUT', 'PATCH'].includes(method) && rawBody.trim()) {
-                try {
-                    parsedBody = JSON.parse(rawBody);
-                } catch (e) {
-                    alert('Syntax Error: Request body contains invalid JSON format.');
-                    return;
-                }
-            }
-
-            sendingRequest = true;
-            const btn = document.getElementById('send-btn');
-            btn.disabled = true;
-            btn.innerText = 'Dispatching...';
-
-            try {
-                const res = await fetch('/api/v1/servicenow/outbound', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-Device-Token': deviceToken
-                    },
-                    body: JSON.stringify({ method, url, authType, basicUser, basicPass, bearerToken, apiKeyHeaderName, apiKeyValue, headers, body: parsedBody })
-                });
-                const data = await res.json();
-                if (res.ok && data.record) {
-                    outboundData.unshift(data.record);
-                    updateLogCount();
-                    renderLogs();
-                    document.getElementById('tabLogs').click();
-                }
-            } catch (err) {
-                console.error(err);
-            } finally {
-                sendingRequest = false;
-                btn.disabled = false;
-                btn.innerText = 'Send Request';
-            }
-        }
-
-        function renderLogs() {
-            const container = document.getElementById('logsContainer');
-            const allLogs = [...outboundData, ...inboundData]
-                .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-
-            if (!allLogs.length) {
-                container.innerHTML = \`<div class="empty">No execution logs recorded in this device session.</div>\`;
-                return;
-            }
-
-            container.innerHTML = allLogs.map(item => {
-                if (item.direction === 'INBOUND') {
-                    return \`
-                        <div class="log-card" id="card-\${esc(item.id)}">
-                            <div class="log-meta">
-                                <div>
-                                    <span class="badge">SERVICENOW INBOUND</span>
-                                    <span class="badge badge-ok" style="margin-left: 6px;">\${esc(item.authMethod || 'Authenticated')}</span>
-                                    <strong style="margin-left: 8px; color: #fff;">\${esc(item.id)}</strong>
-                                </div>
-                                <div style="display: flex; align-items: center; gap: 12px;">
-                                    <span style="color: var(--text-muted);">\${formatTime(item.timestamp)}</span>
-                                    <button class="btn-delete-record" onclick="deleteRecord('\${esc(item.id)}')">Delete</button>
-                                </div>
-                            </div>
-                            <pre>\${esc(JSON.stringify(item.payload, null, 2))}</pre>
-                        </div>
-                    \`;
-                } else {
-                    const isSuccess = item.statusCode >= 200 && item.statusCode < 300;
-                    return \`
-                        <div class="log-card" id="card-\${esc(item.id)}">
-                            <div class="log-meta">
-                                <div>
-                                    <span class="badge">\${esc(item.method)}</span>
-                                    <span class="badge \${isSuccess ? 'badge-ok' : 'badge-err'}" style="margin-left: 6px;">\${esc(item.status)}</span>
-                                    <span style="margin-left: 8px; color: var(--text-muted); font-size: 11px;">\${esc(item.durationMs)} ms</span>
-                                </div>
-                                <div style="display: flex; align-items: center; gap: 12px;">
-                                    <span style="color: var(--text-muted);">\${formatTime(item.timestamp)}</span>
-                                    <button class="btn-delete-record" onclick="deleteRecord('\${esc(item.id)}')">Delete</button>
-                                </div>
-                            </div>
-                            <div style="font-family: monospace; font-size: 12px; color: var(--cyan); margin-bottom: 8px; word-break: break-all;">\${esc(item.url)}</div>
-                            <label style="margin-top: 8px;">Response Payload</label>
-                            <pre>\${esc(JSON.stringify(item.responsePayload, null, 2))}</pre>
-                        </div>
-                    \`;
-                }
-            }).join('');
-            bindHoverListeners();
-        }
-    </script>
+  /* ---------- init ---------- */
+  state.deviceId = getDeviceId();
+  addHeaderRow('Accept', 'application/json');
+  updateAuthFields();
+  updateBodyState();
+  showPanel('inbound');
+  renderCredentials();
+  renderLogs();
+  rotateCredentials(false);
+  loadLogs();
+  checkHealth();
+  setInterval(loadLogs, 3000);
+  setInterval(checkHealth, 30000);
+})();
+</script>
 </body>
-</html>`);
+</html>`;
+
+app.get('/', (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.type('html').send(PAGE);
 });
 
 app.use((err, req, res, next) => {
@@ -1141,5 +1390,5 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`NexRelay Masterpiece ServiceNow Integration Hub running on port ${PORT}`);
+    console.log(`NexRelay ServiceNow Integration Hub running on port ${PORT}`);
 });
