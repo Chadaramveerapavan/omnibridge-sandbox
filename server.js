@@ -1,5 +1,3 @@
-// 
-
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -187,7 +185,7 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
     });
 });
 
-// 2b. Logs endpoint so the website can read what the server saved
+// 2b. Logs endpoints
 app.get('/api/v1/servicenow/logs', (req, res) => {
     res.json({ inbound: inboundLogs, outbound: outboundLogs });
 });
@@ -198,11 +196,27 @@ app.delete('/api/v1/servicenow/logs', (req, res) => {
     res.json({ status: 'Cleared' });
 });
 
+// Endpoint to delete an individual record by id
+app.delete('/api/v1/servicenow/logs/:id', (req, res) => {
+    const targetId = req.params.id;
+    const initialInboundLen = inboundLogs.length;
+    const initialOutboundLen = outboundLogs.length;
+
+    inboundLogs = inboundLogs.filter(item => item.id !== targetId);
+    outboundLogs = outboundLogs.filter(item => item.id !== targetId);
+
+    if (inboundLogs.length === initialInboundLen && outboundLogs.length === initialOutboundLen) {
+        return res.status(404).json({ status: 'Error', message: 'Record not found.' });
+    }
+
+    res.json({ status: 'Success', message: `Record ${targetId} deleted.` });
+});
+
 app.get('/health', (req, res) => {
     res.json({ status: 'ok', uptimeSeconds: Math.round(process.uptime()) });
 });
 
-// 3. Masterpiece Frontend (Heavy Background Aurora + Constellation Mesh + Clean Non-Overlapping Icon Controls)
+// 3. Masterpiece Frontend (Heavy Background Aurora + Constellation Mesh + Individual Delete Buttons)
 app.get('/', (req, res) => {
     res.send(`<!DOCTYPE html>
 <html lang="en">
@@ -489,6 +503,23 @@ app.get('/', (req, res) => {
         .btn-primary:hover:not(:disabled) { filter: brightness(1.12); transform: translateY(-1px); }
         .btn-primary:disabled { background: var(--surface-elevated); color: var(--text-muted); cursor: not-allowed; box-shadow: none; }
 
+        /* Individual delete button style for record cards */
+        .btn-delete-record {
+            background: rgba(244, 63, 94, 0.12);
+            border: 1px solid rgba(244, 63, 94, 0.35);
+            color: var(--danger);
+            padding: 5px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .btn-delete-record:hover {
+            background: rgba(244, 63, 94, 0.25);
+            border-color: var(--danger);
+        }
+
         .log-card {
             background: var(--surface-card); backdrop-filter: blur(12px);
             border: 1px solid var(--border); border-radius: 14px;
@@ -653,7 +684,7 @@ app.get('/', (req, res) => {
             <div class="card" style="background: transparent; border: none; padding: 0; box-shadow: none;">
                 <h2>Execution History & Diagnostics</h2>
                 <p class="sub">Real-time audit trail of inbound webhook receptions and outbound proxy responses.</p>
-                <button type="button" class="nav-btn" style="padding: 8px 16px; font-size: 12px; margin-bottom: 18px;" onclick="clearLogs()">Clear Logs</button>
+                <button type="button" class="nav-btn" style="padding: 8px 16px; font-size: 12px; margin-bottom: 18px;" onclick="clearLogs()">Clear All Logs</button>
                 <div id="logsContainer">
                     <div class="empty">No execution logs recorded in this session.</div>
                 </div>
@@ -876,14 +907,12 @@ app.get('/', (req, res) => {
         let sendingRequest = false;
 
         let lastLogSignature = '';
-        // Makes any text safe to show inside HTML (stops a payload from running code in the browser)
         function esc(value) {
             return String(value === undefined || value === null ? '' : value)
                 .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
-        // Shows the server's UTC time in the viewer's own local time
         function formatTime(iso) {
             const d = new Date(iso);
             return isNaN(d) ? esc(iso) : esc(d.toLocaleString());
@@ -898,6 +927,25 @@ app.get('/', (req, res) => {
                 outboundData = [];
                 updateLogCount();
                 renderLogs();
+            } catch (e) { console.error(e); }
+        }
+
+        // Delete an individual record by its unique ID
+        async function deleteRecord(recordId) {
+            if (!confirm('Delete this record?')) return;
+            try {
+                const res = await fetch('/api/v1/servicenow/logs/' + encodeURIComponent(recordId), { method: 'DELETE' });
+                if (res.ok) {
+                    inboundData = inboundData.filter(item => item.id !== recordId);
+                    outboundData = outboundData.filter(item => item.id !== recordId);
+                    lastLogSignature = (inboundData[0] ? inboundData[0].id : '') + '|' +
+                                      (outboundData[0] ? outboundData[0].id : '') + '|' +
+                                      inboundData.length + '|' + outboundData.length;
+                    updateLogCount();
+                    renderLogs();
+                } else {
+                    alert('Failed to delete record.');
+                }
             } catch (e) { console.error(e); }
         }
 
@@ -992,13 +1040,16 @@ app.get('/', (req, res) => {
             container.innerHTML = allLogs.map(item => {
                 if (item.direction === 'INBOUND') {
                     return \`
-                        <div class="log-card">
+                        <div class="log-card" id="card-\${esc(item.id)}">
                             <div class="log-meta">
                                 <div>
                                     <span class="badge">SERVICENOW INBOUND</span>
                                     <strong style="margin-left: 8px; color: #fff;">\${esc(item.id)}</strong>
                                 </div>
-                                <span style="color: var(--text-muted);">\${formatTime(item.timestamp)}</span>
+                                <div style="display: flex; align-items: center; gap: 12px;">
+                                    <span style="color: var(--text-muted);">\${formatTime(item.timestamp)}</span>
+                                    <button class="btn-delete-record" onclick="deleteRecord('\${esc(item.id)}')">Delete</button>
+                                </div>
                             </div>
                             <pre>\${esc(JSON.stringify(item.payload, null, 2))}</pre>
                         </div>
@@ -1006,14 +1057,17 @@ app.get('/', (req, res) => {
                 } else {
                     const isSuccess = item.statusCode >= 200 && item.statusCode < 300;
                     return \`
-                        <div class="log-card">
+                        <div class="log-card" id="card-\${esc(item.id)}">
                             <div class="log-meta">
                                 <div>
                                     <span class="badge">\${esc(item.method)}</span>
                                     <span class="badge \${isSuccess ? 'badge-ok' : 'badge-err'}" style="margin-left: 6px;">\${esc(item.status)}</span>
                                     <span style="margin-left: 8px; color: var(--text-muted); font-size: 11px;">\${esc(item.durationMs)} ms</span>
                                 </div>
-                                <span style="color: var(--text-muted);">\${formatTime(item.timestamp)}</span>
+                                <div style="display: flex; align-items: center; gap: 12px;">
+                                    <span style="color: var(--text-muted);">\${formatTime(item.timestamp)}</span>
+                                    <button class="btn-delete-record" onclick="deleteRecord('\${esc(item.id)}')">Delete</button>
+                                </div>
                             </div>
                             <div style="font-family: monospace; font-size: 12px; color: var(--cyan); margin-bottom: 8px; word-break: break-all;">\${esc(item.url)}</div>
                             <label style="margin-top: 8px;">Response Payload</label>
@@ -1022,6 +1076,7 @@ app.get('/', (req, res) => {
                     \`;
                 }
             }).join('');
+            bindHoverListeners();
         }
     </script>
 </body>
@@ -1043,3 +1098,4 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
     console.log(`NexRelay Masterpiece ServiceNow Integration Hub running on port ${PORT}`);
 });
+```[cite: 1]
