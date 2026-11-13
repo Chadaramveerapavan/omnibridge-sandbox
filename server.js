@@ -1098,4 +1098,3 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
     console.log(`NexRelay Masterpiece ServiceNow Integration Hub running on port ${PORT}`);
 });
-```[cite: 1]
