@@ -611,7 +611,7 @@ app.get('/', (req, res) => {
 
                 <!-- Dedicated Separate Bearer Token Section -->
                 <div style="background: rgba(99, 102, 241, 0.05); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-top: 10px;">
-                    <label style="color: var(--cyan); font-size: 12px; margin-bottom: 10px;">Dedicated Bearer Token (Read-Only)</label>
+                    <label style="color: var(--cyan); font-size: 12px; margin-bottom: 10px;">Dedicated Bearer Token</label>
                     <div style="display: flex; gap: 10px;">
                         <div class="secret-field-wrapper" style="flex: 1;">
                             <input type="password" id="authHeaderBox" readonly style="font-family: monospace; color: var(--text-main);" />
