@@ -578,6 +578,97 @@ pre{margin:0;padding:14px 16px;background:var(--surface-2);border:1px solid var(
   .grid-2,.url-bar{grid-template-columns:1fr}
   .topbar{flex-direction:column}
 }
+/* ===== Motion: transform/opacity only, no continuous JS loops ===== */
+:root{--ease:cubic-bezier(.2,.8,.2,1)}
+@keyframes enter{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes navIn{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
+@keyframes tabIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes toastIn{from{opacity:0;transform:translateX(28px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes bar{to{transform:scaleX(0)}}
+@keyframes ping{75%,100%{transform:scale(2.6);opacity:0}}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes flash{from{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}to{border-color:var(--border-strong);box-shadow:0 0 0 0 transparent}}
+@keyframes sheen{to{transform:translateX(100%)}}
+@keyframes bump{0%{transform:scale(1)}40%{transform:scale(1.3)}100%{transform:scale(1)}}
+@keyframes pop{0%{transform:scale(.55)}60%{transform:scale(1.2)}100%{transform:scale(1)}}
+@keyframes logIn{from{opacity:0;transform:translateY(-12px) scale(.985);border-color:var(--accent)}to{opacity:1;transform:none;border-color:var(--border)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes fadeOut{from{opacity:1}to{opacity:0}}
+@keyframes dialogIn{from{opacity:0;transform:translateY(14px) scale(.94)}to{opacity:1;transform:none}}
+@keyframes dialogOut{from{opacity:1;transform:none}to{opacity:0;transform:translateY(8px) scale(.97)}}
+
+/* page + panel entrances (staggered) */
+.topbar{animation:enter .5s var(--ease) backwards}
+.panel.active{animation:none}
+.panel.active>*{animation:enter .5s var(--ease) backwards}
+.panel.active>*:nth-child(2){animation-delay:.06s}
+.panel.active>*:nth-child(3){animation-delay:.12s}
+.panel.active>*:nth-child(4){animation-delay:.18s}
+.nav-item{animation:navIn .5s var(--ease) backwards}
+.nav-item:nth-child(3){animation-delay:.05s}
+.nav-item:nth-child(4){animation-delay:.1s}
+.tab-panel:not([hidden]){animation:tabIn .32s var(--ease)}
+
+/* sidebar: sliding active indicator */
+.nav{position:relative}
+.nav-indicator{position:absolute;left:0;top:0;border-radius:8px;background:var(--side-active);box-shadow:inset 3px 0 0 var(--accent);pointer-events:none;z-index:0;transition:transform .38s var(--ease),width .38s var(--ease),height .38s var(--ease)}
+.nav-item{position:relative;z-index:1}
+.nav-item.active,.nav-item.active:hover{background:transparent;box-shadow:none}
+.nav-item .icon{transition:transform .25s var(--ease)}
+.nav-item:hover .icon{transform:translateX(3px)}
+.brand-mark{transition:transform .4s var(--ease)}
+.brand:hover .brand-mark{transform:rotate(-8deg) scale(1.06)}
+
+/* segmented controls: sliding thumb */
+.seg{position:relative}
+.seg button{position:relative;z-index:1;transition:color .2s}
+.seg button.active{background:transparent;box-shadow:none}
+.seg-thumb{position:absolute;left:0;top:0;width:0;height:0;border-radius:7px;background:var(--surface);box-shadow:var(--shadow);pointer-events:none;z-index:0;transition:transform .38s var(--ease),width .38s var(--ease),height .38s var(--ease)}
+
+/* buttons, cards, inputs */
+.btn{transition:background .15s,border-color .15s,color .15s,transform .12s,box-shadow .2s}
+.btn:active:not(:disabled){transform:scale(.97)}
+.btn-primary:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 6px 16px rgba(10,125,92,.28)}
+.btn.loading{pointer-events:none}
+.btn.loading .icon{display:none}
+.btn.loading::before{content:'';width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite}
+.btn.busy .icon{animation:spin .8s linear infinite}
+.card{transition:box-shadow .25s,border-color .25s}
+.card:hover{box-shadow:0 8px 24px rgba(15,23,42,.08);border-color:var(--border-strong)}
+.input-group{position:relative;transition:border-color .2s,box-shadow .2s}
+.input-group:focus-within{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.icon-btn{transition:background .15s,color .15s}
+.icon-btn:active{transform:scale(.92)}
+.icon-btn.pop .icon,.btn.pop .icon{animation:pop .35s var(--ease)}
+.icon-btn.copied{color:var(--ok);background:var(--ok-soft)}
+.btn.copied{color:var(--ok);border-color:var(--ok)}
+.input-group.shimmer::after{content:'';position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,var(--accent-soft) 50%,transparent 70%);transform:translateX(-100%);animation:sheen 1.2s infinite;pointer-events:none}
+.input-group.flash{animation:flash 1s ease}
+
+/* status, counts, empty state */
+.status.ok .dot{position:relative}
+.status.ok .dot::after{content:'';position:absolute;inset:0;border-radius:50%;background:var(--ok);animation:ping 2s cubic-bezier(0,0,.2,1) infinite}
+.count.bump{animation:bump .35s var(--ease)}
+.empty .icon{animation:float 3.2s ease-in-out infinite}
+
+/* logs */
+.log.is-new{animation:logIn .5s var(--ease)}
+.log.removing{overflow:hidden;opacity:0;transform:translateX(24px);height:0!important;margin-bottom:0;border-width:0;transition:height .3s var(--ease),opacity .2s ease,transform .3s var(--ease),margin .3s var(--ease)}
+.log.sweep{opacity:0;transform:translateX(28px);transition:opacity .25s ease,transform .3s var(--ease)}
+
+/* toasts */
+.toast{position:relative;overflow:hidden;animation:toastIn .35s var(--ease)}
+.toast::after{content:'';position:absolute;left:0;bottom:0;height:3px;width:100%;background:var(--info);transform-origin:left;animation:bar 3.4s linear forwards}
+.toast.success::after{background:var(--ok)}
+.toast.error::after{background:var(--danger)}
+
+/* modal */
+.modal{animation:fadeIn .18s ease both}
+.modal .dialog{animation:dialogIn .3s var(--ease) both}
+.modal.closing{animation:fadeOut .17s ease both}
+.modal.closing .dialog{animation:dialogOut .17s ease both}
+
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -592,6 +683,8 @@ pre{margin:0;padding:14px 16px;background:var(--surface-2);border:1px solid var(
   <symbol id="i-refresh" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></symbol>
   <symbol id="i-hex" viewBox="0 0 24 24"><path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M8 12h8"/><path d="M13 9l3 3-3 3"/></symbol>
   <symbol id="i-send" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
+  <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></symbol>
 </svg>
 
 <div class="app">
@@ -602,6 +695,7 @@ pre{margin:0;padding:14px 16px;background:var(--surface-2);border:1px solid var(
     </div>
     <div class="nav-label">Workspace</div>
     <nav class="nav" aria-label="Primary">
+      <span class="nav-indicator" id="navIndicator" aria-hidden="true"></span>
       <button type="button" class="nav-item active" data-panel="inbound"><svg class="icon"><use href="#i-in"/></svg>Inbound webhook</button>
       <button type="button" class="nav-item" data-panel="outbound"><svg class="icon"><use href="#i-out"/></svg>Outbound client</button>
       <button type="button" class="nav-item" data-panel="logs"><svg class="icon"><use href="#i-list"/></svg>Execution logs<span class="count" id="logCount">0</span></button>
@@ -900,7 +994,7 @@ pre{margin:0;padding:14px 16px;background:var(--surface-2);border:1px solid var(
     outbound: ['Outbound HTTP client', 'Send authenticated requests to your ServiceNow instance.'],
     logs: ['Execution logs', 'Audit trail of inbound and outbound traffic for this workspace.']
   };
-  var state = { deviceId: '', creds: null, credTab: 'cred-bearer', inbound: [], outbound: [], filter: 'all', sending: false, sig: '', open: {} };
+  var state = { deviceId: '', creds: null, credTab: 'cred-bearer', seen: {}, primed: false, inbound: [], outbound: [], filter: 'all', sending: false, sig: '', open: {} };
 
   function $(id) { return document.getElementById(id); }
   function esc(v) {
@@ -931,6 +1025,7 @@ pre{margin:0;padding:14px 16px;background:var(--surface-2);border:1px solid var(
   }
 
   var modalResolve = null;
+  var modalTimer = null;
   function confirmDialog(opts) {
     return new Promise(function (resolve) {
       $('modalTitle').textContent = opts.title;
@@ -938,13 +1033,18 @@ pre{margin:0;padding:14px 16px;background:var(--surface-2);border:1px solid var(
       var ok = $('modalConfirm');
       ok.textContent = opts.confirmLabel || 'Confirm';
       ok.className = 'btn ' + (opts.danger ? 'btn-danger' : 'btn-primary');
+      clearTimeout(modalTimer);
+      $('modal').classList.remove('closing');
       $('modal').hidden = false;
       $('modalCancel').focus();
       modalResolve = resolve;
     });
   }
   function closeModal(result) {
-    $('modal').hidden = true;
+    var m = $('modal');
+    m.classList.add('closing');
+    clearTimeout(modalTimer);
+    modalTimer = setTimeout(function () { m.hidden = true; m.classList.remove('closing'); }, 170);
     if (modalResolve) { var r = modalResolve; modalResolve = null; r(result); }
   }
 
@@ -959,15 +1059,112 @@ pre{margin:0;padding:14px 16px;background:var(--surface-2);border:1px solid var(
     document.body.removeChild(t);
     return ok;
   }
-  function copyText(value, label) {
+  function copyText(value, label, btn) {
     if (!value) { toast('Nothing to copy yet', 'error'); return; }
-    function done() { toast(label + ' copied to clipboard', 'success'); }
+    function done() { toast(label + ' copied to clipboard', 'success'); flashCopied(btn); }
     function fail() { toast('Copy failed - select the text and copy manually', 'error'); }
     if (navigator.clipboard && window.isSecureContext) {
       navigator.clipboard.writeText(value).then(done, function () { fallbackCopy(value) ? done() : fail(); });
     } else {
       fallbackCopy(value) ? done() : fail();
     }
+  }
+
+  /* ---------- motion helpers ---------- */
+  function swapIcon(btn, id, noPop) {
+    var u = btn.querySelector('use');
+    if (!u) return;
+    u.setAttribute('href', '#' + id);
+    if (!noPop) { btn.classList.remove('pop'); void btn.offsetWidth; btn.classList.add('pop'); }
+  }
+
+  function flashCopied(btn) {
+    if (!btn) return;
+    var u = btn.querySelector('use');
+    if (!u) return;
+    if (!btn.getAttribute('data-orig')) btn.setAttribute('data-orig', u.getAttribute('href').slice(1));
+    swapIcon(btn, 'i-check');
+    btn.classList.add('copied');
+    clearTimeout(btn._t);
+    btn._t = setTimeout(function () {
+      swapIcon(btn, btn.getAttribute('data-orig'), true);
+      btn.classList.remove('copied');
+    }, 1400);
+  }
+
+  function moveIndicator() {
+    var ind = $('navIndicator');
+    var active = document.querySelector('.nav-item.active');
+    if (!ind || !active || !active.offsetWidth) return;
+    var first = !ind.getAttribute('data-ready');
+    if (first) ind.style.transition = 'none';
+    ind.style.width = active.offsetWidth + 'px';
+    ind.style.height = active.offsetHeight + 'px';
+    ind.style.transform = 'translate(' + active.offsetLeft + 'px,' + active.offsetTop + 'px)';
+    if (first) { void ind.offsetWidth; ind.style.transition = ''; ind.setAttribute('data-ready', '1'); }
+  }
+
+  function placeThumb(seg) {
+    var thumb = seg.querySelector('.seg-thumb');
+    var active = seg.querySelector('button.active');
+    if (!thumb || !active || !active.offsetWidth) return;
+    var first = !thumb.getAttribute('data-ready');
+    if (first) thumb.style.transition = 'none';
+    thumb.style.width = active.offsetWidth + 'px';
+    thumb.style.height = active.offsetHeight + 'px';
+    thumb.style.transform = 'translate(' + active.offsetLeft + 'px,' + active.offsetTop + 'px)';
+    if (first) { void thumb.offsetWidth; thumb.style.transition = ''; thumb.setAttribute('data-ready', '1'); }
+  }
+
+  function updateThumbs() {
+    Array.prototype.forEach.call(document.querySelectorAll('.seg'), placeThumb);
+  }
+
+  function initMotion() {
+    Array.prototype.forEach.call(document.querySelectorAll('.seg'), function (seg) {
+      var t = document.createElement('span');
+      t.className = 'seg-thumb';
+      t.setAttribute('aria-hidden', 'true');
+      seg.insertBefore(t, seg.firstChild);
+    });
+    function relayout() { moveIndicator(); updateThumbs(); }
+    window.addEventListener('resize', relayout);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(relayout);
+  }
+
+  var CRED_IDS = ['bearerBox', 'basicUserBox', 'basicPassBox', 'apiKeyBox', 'apiQueryBox', 'oauthIdBox', 'oauthSecretBox'];
+  function eachCredGroup(fn) {
+    CRED_IDS.forEach(function (id) { var el = $(id); if (el && el.parentElement) fn(el.parentElement); });
+  }
+  function setCredLoading(on) {
+    eachCredGroup(function (g) { g.classList.toggle('shimmer', !!on); });
+  }
+  function flashCreds() {
+    eachCredGroup(function (g) { g.classList.remove('flash'); void g.offsetWidth; g.classList.add('flash'); });
+    setTimeout(function () { eachCredGroup(function (g) { g.classList.remove('flash'); }); }, 1100);
+  }
+
+  function collapseCard(id) {
+    return new Promise(function (resolve) {
+      var el = document.querySelector('[data-card="' + String(id).replace(/"/g, '') + '"]');
+      if (!el) { resolve(); return; }
+      el.style.height = el.offsetHeight + 'px';
+      void el.offsetWidth;
+      el.classList.add('removing');
+      setTimeout(resolve, 300);
+    });
+  }
+
+  function sweepCards() {
+    return new Promise(function (resolve) {
+      var cards = document.querySelectorAll('#logsList .log');
+      var n = Math.min(cards.length, 8);
+      Array.prototype.forEach.call(cards, function (c, i) {
+        c.style.transitionDelay = Math.min(i, 8) * 35 + 'ms';
+        c.classList.add('sweep');
+      });
+      setTimeout(resolve, cards.length ? n * 35 + 320 : 0);
+    });
   }
 
   /* ---------- navigation ---------- */
@@ -980,6 +1177,7 @@ pre{margin:0;padding:14px 16px;background:var(--surface-2);border:1px solid var(
     });
     $('pageTitle').textContent = PAGES[name][0];
     $('pageSub').textContent = PAGES[name][1];
+    requestAnimationFrame(function () { moveIndicator(); updateThumbs(); });
   }
 
   function switchTab(btn) {
@@ -992,6 +1190,7 @@ pre{margin:0;padding:14px 16px;background:var(--surface-2);border:1px solid var(
       p.hidden = p.id !== target;
     });
     if (group === 'cred') { state.credTab = target; renderCurl(); }
+    updateThumbs();
   }
 
   /* ---------- workspace & credentials ---------- */
@@ -1058,6 +1257,8 @@ pre{margin:0;padding:14px 16px;background:var(--surface-2);border:1px solid var(
   }
 
   function rotateCredentials(manual) {
+    setCredLoading(!state.creds);
+    $('rotateBtn').classList.add('busy');
     return fetch(API + '/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1067,6 +1268,8 @@ pre{margin:0;padding:14px 16px;background:var(--surface-2);border:1px solid var(
       return r.json();
     }).then(function (c) {
       state.creds = c;
+      setCredLoading(false);
+      flashCreds();
       renderCredentials();
       if (manual) toast('New credentials issued. Previous ones are revoked.', 'success');
     }).catch(function (e) {
@@ -1088,6 +1291,10 @@ pre{margin:0;padding:14px 16px;background:var(--surface-2);border:1px solid var(
         var s = signature(d.inbound, d.outbound);
         if (s === state.sig) return;
         state.sig = s; state.inbound = d.inbound; state.outbound = d.outbound;
+        if (!state.primed) {
+          state.primed = true; // logs that already exist on first load appear without the "new" animation
+          d.inbound.concat(d.outbound).forEach(function (i) { state.seen[i.id] = true; });
+        }
         renderLogs();
       }).catch(function () {});
   }
@@ -1119,7 +1326,7 @@ pre{margin:0;padding:14px 16px;background:var(--surface-2);border:1px solid var(
       body = block('Request body', item.requestPayload) + block('Response', item.responsePayload);
     }
     var open = state.open[item.id] ? ' open' : '';
-    return '<article class="log">' +
+    return '<article class="log' + (state.seen[item.id] ? '' : ' is-new') + '" data-card="' + esc(item.id) + '">' +
       '<div class="log-head"><div class="log-title">' + head + '</div>' +
       '<div class="log-actions"><span class="log-meta">' + formatTime(item.timestamp) + '</span>' + delBtn + '</div></div>' +
       (inbound ? '' : '<div class="log-url">' + esc(item.url) + '</div>') +
@@ -1131,7 +1338,11 @@ pre{margin:0;padding:14px 16px;background:var(--surface-2);border:1px solid var(
     var all = state.outbound.concat(state.inbound).sort(function (a, b) {
       return new Date(b.timestamp) - new Date(a.timestamp);
     });
-    $('logCount').textContent = all.length;
+    var cnt = $('logCount');
+    if (cnt.textContent !== String(all.length)) {
+      cnt.textContent = all.length;
+      cnt.classList.remove('bump'); void cnt.offsetWidth; cnt.classList.add('bump');
+    }
     $('clearAllBtn').disabled = all.length === 0;
 
     var list = all.filter(function (i) {
@@ -1143,6 +1354,7 @@ pre{margin:0;padding:14px 16px;background:var(--surface-2);border:1px solid var(
       return;
     }
     $('logsList').innerHTML = list.map(logCard).join('');
+    all.forEach(function (i) { state.seen[i.id] = true; });
   }
 
   function resetSignature() {
@@ -1159,11 +1371,13 @@ pre{margin:0;padding:14px 16px;background:var(--surface-2);border:1px solid var(
       return fetch(API + '/logs/' + encodeURIComponent(id), { method: 'DELETE', headers: { 'X-Device-Token': state.deviceId } })
         .then(function (r) {
           if (r.ok) {
-            state.inbound = state.inbound.filter(function (i) { return i.id !== id; });
-            state.outbound = state.outbound.filter(function (i) { return i.id !== id; });
-            delete state.open[id];
-            resetSignature(); renderLogs();
-            toast('Record ' + id + ' deleted', 'success');
+            return collapseCard(id).then(function () {
+              state.inbound = state.inbound.filter(function (i) { return i.id !== id; });
+              state.outbound = state.outbound.filter(function (i) { return i.id !== id; });
+              delete state.open[id];
+              resetSignature(); renderLogs();
+              toast('Record ' + id + ' deleted', 'success');
+            });
           } else if (r.status === 404) {
             state.sig = ''; loadLogs();
             toast('That record was already removed', 'info');
@@ -1186,9 +1400,11 @@ pre{margin:0;padding:14px 16px;background:var(--surface-2);border:1px solid var(
       return fetch(API + '/logs', { method: 'DELETE', headers: { 'X-Device-Token': state.deviceId } })
         .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
         .then(function (d) {
-          state.inbound = []; state.outbound = []; state.open = {};
-          resetSignature(); renderLogs();
-          toast(d.deleted + ' record' + (d.deleted === 1 ? '' : 's') + ' deleted', 'success');
+          return sweepCards().then(function () {
+            state.inbound = []; state.outbound = []; state.open = {};
+            resetSignature(); renderLogs();
+            toast(d.deleted + ' record' + (d.deleted === 1 ? '' : 's') + ' deleted', 'success');
+          });
         });
     }).catch(function () { toast('Could not delete the records', 'error'); });
   }
@@ -1240,6 +1456,7 @@ pre{margin:0;padding:14px 16px;background:var(--surface-2);border:1px solid var(
     state.sending = true;
     var btn = $('sendBtn');
     btn.disabled = true;
+    btn.classList.add('loading');
     btn.lastChild.textContent = 'Sending…';
 
     fetch(API + '/outbound', {
@@ -1269,6 +1486,7 @@ pre{margin:0;padding:14px 16px;background:var(--surface-2);border:1px solid var(
     }).then(function () {
       state.sending = false;
       btn.disabled = false;
+      btn.classList.remove('loading');
       btn.lastChild.textContent = 'Send request';
     });
   }
@@ -1293,18 +1511,20 @@ pre{margin:0;padding:14px 16px;background:var(--surface-2);border:1px solid var(
 
     if ((el = t.closest('[data-copy-header]'))) {
       if (!state.creds) { toast('Credentials are still being issued', 'error'); return; }
-      copyText('Bearer ' + state.creds.bearer, 'Authorization header value');
+      copyText('Bearer ' + state.creds.bearer, 'Authorization header value', el);
       return;
     }
     if ((el = t.closest('[data-copy]'))) {
       var src = $(el.getAttribute('data-copy'));
       var val = (src.value !== undefined) ? src.value : src.textContent;
-      copyText(val, el.getAttribute('data-label') || 'Value');
+      copyText(val, el.getAttribute('data-label') || 'Value', el);
       return;
     }
     if ((el = t.closest('[data-reveal]'))) {
       var f = $(el.getAttribute('data-reveal'));
-      f.type = f.type === 'password' ? 'text' : 'password';
+      var show = f.type === 'password';
+      f.type = show ? 'text' : 'password';
+      swapIcon(el, show ? 'i-eye-off' : 'i-eye');
       return;
     }
     if ((el = t.closest('[data-tab-group]'))) { switchTab(el); return; }
@@ -1312,6 +1532,7 @@ pre{margin:0;padding:14px 16px;background:var(--surface-2);border:1px solid var(
     if ((el = t.closest('[data-filter]'))) {
       state.filter = el.getAttribute('data-filter');
       Array.prototype.forEach.call(document.querySelectorAll('[data-filter]'), function (b) { b.classList.toggle('active', b === el); });
+      updateThumbs();
       renderLogs();
       return;
     }
@@ -1360,6 +1581,7 @@ pre{margin:0;padding:14px 16px;background:var(--surface-2);border:1px solid var(
   addHeaderRow('Accept', 'application/json');
   updateAuthFields();
   updateBodyState();
+  initMotion();
   showPanel('inbound');
   renderCredentials();
   renderLogs();
