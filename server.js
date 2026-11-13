@@ -16,7 +16,7 @@ const ALLOWED_HOSTS = (process.env.ALLOWED_HOSTS || '.service-now.com')
     .split(',').map(h => h.trim().toLowerCase()).filter(Boolean);
 const OUTBOUND_TIMEOUT_MS = 30000;
 
-// Per-Device Log Store: { [deviceToken]: { inbound: [], outbound: [] } }
+// Per-Device Log Store
 const deviceStores = {};
 
 function getStore(deviceToken) {
@@ -48,14 +48,13 @@ function isAllowedUrl(rawUrl) {
     } catch { return false; }
 }
 
-// 1. ServiceNow Inbound REST Endpoint (Supports device-specific URL route or global fallback)
+// 1. ServiceNow Inbound REST Endpoint
 app.post(['/api/v1/servicenow/inbound/:deviceToken', '/api/v1/servicenow/inbound'], (req, res) => {
     const routeToken = req.params.deviceToken;
     const authHeader = req.headers['authorization'] || '';
     const apiKeyHeader = req.headers['x-sn-apikey'] || req.headers['x-api-key'] || '';
     const headerDeviceToken = req.headers['x-device-token'];
 
-    // Determine target device store based on route param, header, or Bearer token
     let targetToken = routeToken || headerDeviceToken;
     if (!targetToken && authHeader.startsWith('Bearer sn_dev_')) {
         targetToken = authHeader.replace('Bearer ', '').trim();
@@ -98,7 +97,7 @@ app.post(['/api/v1/servicenow/inbound/:deviceToken', '/api/v1/servicenow/inbound
     });
 });
 
-// 2. Postman-Style Outbound HTTP Proxy (Scorched-earth isolated per device)
+// 2. Postman-Style Outbound HTTP Proxy
 app.post('/api/v1/servicenow/outbound', async (req, res) => {
     const { method, url, authType, basicUser, basicPass, bearerToken, apiKeyHeaderName, apiKeyValue, headers, body } = req.body;
     const deviceToken = req.headers['x-device-token'];
@@ -245,7 +244,7 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok', uptimeSeconds: Math.round(process.uptime()) });
 });
 
-// 3. Masterpiece Frontend (Per-Device Isolation + Stunning Background + Complete Auth Options)
+// 3. Masterpiece Frontend (Fresh Key on Refresh, Read-Only Auth, Separate Bearer Section)
 app.get('/', (req, res) => {
     res.send(`<!DOCTYPE html>
 <html lang="en">
@@ -445,6 +444,11 @@ app.get('/', (req, res) => {
             outline: none; border-color: var(--indigo);
             box-shadow: 0 0 0 3px var(--indigo-glow);
         }
+        input[readonly] {
+            background: rgba(3, 4, 9, 0.65);
+            color: var(--cyan);
+            cursor: not-allowed;
+        }
         textarea { font-family: ui-monospace, monospace; font-size: 12px; resize: vertical; }
 
         .secret-field-wrapper {
@@ -456,10 +460,6 @@ app.get('/', (req, res) => {
             overflow: hidden;
             transition: border-color 0.2s ease, box-shadow 0.2s ease;
         }
-        .secret-field-wrapper:focus-within {
-            border-color: var(--indigo);
-            box-shadow: 0 0 0 3px var(--indigo-glow);
-        }
         .secret-field-wrapper input {
             flex: 1;
             border: none;
@@ -468,9 +468,7 @@ app.get('/', (req, res) => {
             padding: 12px 14px;
             min-width: 0;
         }
-        .secret-field-wrapper input:focus {
-            box-shadow: none;
-        }
+        .secret-field-wrapper input:focus { box-shadow: none; }
         .eye-btn {
             background: rgba(24, 34, 60, 0.6);
             border: none;
@@ -595,77 +593,33 @@ app.get('/', (req, res) => {
             <button class="nav-btn" id="tabLogs" onclick="switchPanel('logs', this)">Execution Logs (<span id="logCount">0</span>)</button>
         </div>
 
-        <!-- Panel 1: Inbound Link -->
+        <!-- Panel 1: Inbound Link (Separate Bearer Section + Read-Only Auth) -->
         <div id="panel-inbound" class="workspace-panel active">
             <div class="card" style="max-width: 740px;">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
                     <div>
                         <h2>Inbound Webhook Endpoint</h2>
-                        <p class="sub" style="margin-bottom: 0;">This unique URL is scoped exclusively to your current device session. Payloads sent here will only appear on this device.</p>
+                        <p class="sub" style="margin-bottom: 0;">Refreshing this page automatically generates a fresh random key and session workspace.</p>
                     </div>
-                    <button type="button" class="nav-btn" style="padding: 8px 14px; font-size: 12px; white-space: nowrap;" onclick="regenerateDeviceSession()">↻ New Fresh Session</button>
                 </div>
 
-                <label>Secured Device-Scoped Inbound Webhook URL</label>
+                <label>Secured Device-Scoped Inbound Webhook URL (Read-Only)</label>
                 <div style="display: flex; gap: 10px; margin-bottom: 22px;">
-                    <input type="text" id="inboundUrlBox" readonly style="margin-bottom: 0; font-family: monospace; color: var(--cyan);" />
+                    <input type="text" id="inboundUrlBox" readonly style="margin-bottom: 0; font-family: monospace;" />
                     <button class="btn-primary" style="width: auto; padding: 0 24px;" onclick="copyText('inboundUrlBox', 'Inbound Webhook Link')">Copy Link</button>
                 </div>
 
-                <label>ServiceNow Inbound Authentication Scheme</label>
-                <select id="inbAuthScheme" onchange="updateInboundAuthUI()">
-                    <option value="bearer">OAuth 2.0 / Bearer Token (Authorization Header)</option>
-                    <option value="basic">Basic Authentication (Username & Password)</option>
-                    <option value="apikey">API Key Authentication (x-sn-apikey Header)</option>
-                </select>
-
-                <div id="inb-scheme-bearer">
-                    <label>Required Authorization Header (Device Ephemeral Bearer Token)</label>
+                <!-- Dedicated Separate Bearer Token Section -->
+                <div style="background: rgba(99, 102, 241, 0.05); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-top: 10px;">
+                    <label style="color: var(--cyan); font-size: 12px; margin-bottom: 10px;">Dedicated Bearer Token (Read-Only)</label>
                     <div style="display: flex; gap: 10px;">
                         <div class="secret-field-wrapper" style="flex: 1;">
-                            <input type="password" id="authHeaderBox" readonly style="font-family: monospace; color: var(--text-muted);" />
+                            <input type="password" id="authHeaderBox" readonly style="font-family: monospace; color: var(--text-main);" />
                             <button type="button" class="eye-btn" title="Show/Hide Token" onclick="toggleVisibility('authHeaderBox', this)">
                                 <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                             </button>
                         </div>
                         <button class="btn-primary" style="width: auto; padding: 0 20px;" onclick="copyText('authHeaderBox', 'Bearer Header')">Copy</button>
-                    </div>
-                </div>
-
-                <div id="inb-scheme-basic" style="display: none;">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-                        <div>
-                            <label>Basic Username</label>
-                            <div style="display: flex; gap: 8px;">
-                                <input type="text" id="inbBasicUserBox" readonly style="margin-bottom: 0; font-family: monospace; color: var(--cyan);" />
-                                <button class="btn-primary" style="width: auto; padding: 0 14px;" onclick="copyText('inbBasicUserBox', 'Username')">Copy</button>
-                            </div>
-                        </div>
-                        <div>
-                            <label>Basic Password</label>
-                            <div style="display: flex; gap: 8px;">
-                                <div class="secret-field-wrapper" style="flex: 1;">
-                                    <input type="password" id="inbBasicPassBox" readonly style="font-family: monospace; color: var(--text-muted);" />
-                                    <button type="button" class="eye-btn" title="Show/Hide Password" onclick="toggleVisibility('inbBasicPassBox', this)">
-                                        <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                                    </button>
-                                </div>
-                                <button class="btn-primary" style="width: auto; padding: 0 14px;" onclick="copyText('inbBasicPassBox', 'Password')">Copy</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div id="inb-scheme-apikey" style="display: none;">
-                    <label>Required Header: <code>x-sn-apikey</code></label>
-                    <div style="display: flex; gap: 10px;">
-                        <div class="secret-field-wrapper" style="flex: 1;">
-                            <input type="password" id="inbApiKeyBox" readonly style="font-family: monospace; color: var(--text-muted);" />
-                            <button type="button" class="eye-btn" title="Show/Hide API Key" onclick="toggleVisibility('inbApiKeyBox', this)">
-                                <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                            </button>
-                        </div>
-                        <button class="btn-primary" style="width: auto; padding: 0 20px;" onclick="copyText('inbApiKeyBox', 'API Key')">Copy</button>
                     </div>
                 </div>
             </div>
@@ -793,57 +747,13 @@ app.get('/', (req, res) => {
                 .map(b => b.toString(16).padStart(2, '0')).join('');
         }
 
-        // Per-Device Session Initialization (Fresh data on new device/system)
-        let deviceToken = localStorage.getItem('nex_device_token');
-        let basicUser = localStorage.getItem('nex_device_user');
-        let basicPass = localStorage.getItem('nex_device_pass');
-        let apiKey = localStorage.getItem('nex_device_apikey');
+        // Generate a fresh random device session key on every page refresh/load
+        const deviceToken = 'sn_dev_' + randomHex(24);
 
-        function initDeviceCredentials(forceNew = false) {
-            if (forceNew || !deviceToken) {
-                deviceToken = 'sn_dev_' + randomHex(24);
-                localStorage.setItem('nex_device_token', deviceToken);
-            }
-            if (forceNew || !basicUser) {
-                basicUser = 'sn_user_' + randomHex(6);
-                localStorage.setItem('nex_device_user', basicUser);
-            }
-            if (forceNew || !basicPass) {
-                basicPass = 'sn_pass_' + randomHex(16);
-                localStorage.setItem('nex_device_pass', basicPass);
-            }
-            if (forceNew || !apiKey) {
-                apiKey = 'sn_key_' + randomHex(20);
-                localStorage.setItem('nex_device_apikey', apiKey);
-            }
-
-            document.getElementById('inboundUrlBox').value = window.location.origin + '/api/v1/servicenow/inbound/' + deviceToken;
-            document.getElementById('authHeaderBox').value = 'Authorization: Bearer ' + deviceToken;
-            document.getElementById('inbBasicUserBox').value = basicUser;
-            document.getElementById('inbBasicPassBox').value = basicPass;
-            document.getElementById('inbApiKeyBox').value = apiKey;
-            document.getElementById('deviceIdBadge').innerText = deviceToken.slice(0, 12) + '...';
-        }
-
-        initDeviceCredentials(false);
-
-        function regenerateDeviceSession() {
-            if (!confirm('Generate a brand new device session? This will start with a fresh workspace.')) return;
-            initDeviceCredentials(true);
-            lastLogSignature = '';
-            inboundData = [];
-            outboundData = [];
-            updateLogCount();
-            renderLogs();
-            alert('Created a fresh device session with a new unique inbound URL and randomized keys!');
-        }
-
-        function updateInboundAuthUI() {
-            const scheme = document.getElementById('inbAuthScheme').value;
-            document.getElementById('inb-scheme-bearer').style.display = scheme === 'bearer' ? 'block' : 'none';
-            document.getElementById('inb-scheme-basic').style.display = scheme === 'basic' ? 'block' : 'none';
-            document.getElementById('inb-scheme-apikey').style.display = scheme === 'apikey' ? 'block' : 'none';
-        }
+        // Populate read-only inbound fields
+        document.getElementById('inboundUrlBox').value = window.location.origin + '/api/v1/servicenow/inbound/' + deviceToken;
+        document.getElementById('authHeaderBox').value = 'Authorization: Bearer ' + deviceToken;
+        document.getElementById('deviceIdBadge').innerText = deviceToken.slice(0, 12) + '...';
 
         function copyText(elementId, label) {
             const box = document.getElementById(elementId);
@@ -1207,7 +1117,7 @@ app.get('/', (req, res) => {
                             </div>
                             <div style="font-family: monospace; font-size: 12px; color: var(--cyan); margin-bottom: 8px; word-break: break-all;">\${esc(item.url)}</div>
                             <label style="margin-top: 8px;">Response Payload</label>
-                            <pre>\{esc(JSON.stringify(item.responsePayload, null, 2))}</pre>
+                            <pre>\${esc(JSON.stringify(item.responsePayload, null, 2))}</pre>
                         </div>
                     \`;
                 }
