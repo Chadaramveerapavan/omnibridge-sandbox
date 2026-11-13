@@ -9,19 +9,27 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(bodyParser.json({ limit: '1mb' }));
 
-// ---- Settings (can be changed on Render under Environment, no code edit needed) ----
-const MAX_LOGS = 200;                                   // keep only the latest 200 logs per direction
-const INBOUND_TOKEN = process.env.INBOUND_TOKEN || '';  // if set, ONLY this exact Bearer token is accepted
+// ---- Settings ----
+const MAX_LOGS = 200;
+const INBOUND_TOKEN = process.env.INBOUND_TOKEN || '';
 const ALLOWED_HOSTS = (process.env.ALLOWED_HOSTS || '.service-now.com')
     .split(',').map(h => h.trim().toLowerCase()).filter(Boolean);
 const OUTBOUND_TIMEOUT_MS = 30000;
 
-let inboundLogs = [];
-let outboundLogs = [];
+// Per-Device Log Store: { [deviceToken]: { inbound: [], outbound: [] } }
+const deviceStores = {};
 
-function addLog(list, entry) {
-    list.unshift(entry);
-    if (list.length > MAX_LOGS) list.length = MAX_LOGS;
+function getStore(deviceToken) {
+    const token = (deviceToken && deviceToken.trim()) ? deviceToken.trim() : 'default_global';
+    if (!deviceStores[token]) {
+        deviceStores[token] = { inbound: [], outbound: [] };
+    }
+    return deviceStores[token];
+}
+
+function addLog(storeList, entry) {
+    storeList.unshift(entry);
+    if (storeList.length > MAX_LOGS) storeList.length = MAX_LOGS;
 }
 
 function safeParse(text) {
@@ -40,47 +48,29 @@ function isAllowedUrl(rawUrl) {
     } catch { return false; }
 }
 
-// 1. ServiceNow Inbound REST Endpoint (Supports Bearer Token, Basic Auth, and API Key)
-app.post('/api/v1/servicenow/inbound', (req, res) => {
+// 1. ServiceNow Inbound REST Endpoint (Supports device-specific URL route or global fallback)
+app.post(['/api/v1/servicenow/inbound/:deviceToken', '/api/v1/servicenow/inbound'], (req, res) => {
+    const routeToken = req.params.deviceToken;
     const authHeader = req.headers['authorization'] || '';
     const apiKeyHeader = req.headers['x-sn-apikey'] || req.headers['x-api-key'] || '';
+    const headerDeviceToken = req.headers['x-device-token'];
 
-    let authVerified = false;
-    let authMethodUsed = 'None';
-
-    if (INBOUND_TOKEN) {
-        if (authHeader === 'Bearer ' + INBOUND_TOKEN) {
-            authVerified = true;
-            authMethodUsed = 'Bearer Token (Env Enforced)';
-        }
-    } else {
-        // 1. Validate Bearer Token (OAuth 2.0 / Token Auth)
-        if (authHeader.startsWith('Bearer sn_nex_') || authHeader.startsWith('Bearer sn_dev_')) {
-            authVerified = true;
-            authMethodUsed = 'Bearer Token';
-        }
-        // 2. Validate Basic Auth (Base64 encoded sn_user_*:sn_pass_*)
-        else if (authHeader.startsWith('Basic ')) {
-            try {
-                const decoded = Buffer.from(authHeader.slice(6), 'base64').toString('utf8');
-                const [user, pass] = decoded.split(':');
-                if (user && pass && user.startsWith('sn_user_') && pass.startsWith('sn_pass_')) {
-                    authVerified = true;
-                    authMethodUsed = `Basic Auth (${user})`;
-                }
-            } catch {}
-        }
-        // 3. Validate API Key Header (x-sn-apikey / x-api-key)
-        else if (apiKeyHeader.startsWith('sn_key_')) {
-            authVerified = true;
-            authMethodUsed = 'API Key (x-sn-apikey)';
-        }
+    // Determine target device store based on route param, header, or Bearer token
+    let targetToken = routeToken || headerDeviceToken;
+    if (!targetToken && authHeader.startsWith('Bearer sn_dev_')) {
+        targetToken = authHeader.replace('Bearer ', '').trim();
     }
 
-    if (!authVerified) {
+    const store = getStore(targetToken);
+
+    const tokenOk = INBOUND_TOKEN
+        ? authHeader === 'Bearer ' + INBOUND_TOKEN
+        : (authHeader && (authHeader.startsWith('Bearer sn_nex_') || authHeader.startsWith('Bearer sn_dev_') || authHeader.startsWith('Basic ') || apiKeyHeader.startsWith('sn_key_')));
+
+    if (!tokenOk && !routeToken) {
         return res.status(401).json({ 
             status: 'Error', 
-            message: 'Authentication failed: Provide a valid ServiceNow Bearer Token, Basic Auth credentials, or x-sn-apikey header.' 
+            message: 'Authentication failed: Provide a valid ServiceNow Bearer Token, Basic Auth credentials, or API Key.' 
         });
     }
 
@@ -90,28 +80,29 @@ app.post('/api/v1/servicenow/inbound', (req, res) => {
     const inboundEntry = {
         id: syncId,
         direction: 'INBOUND',
-        authMethod: authMethodUsed,
+        authMethod: 'ServiceNow Webhook',
         timestamp,
         headers: {
-            'content-type': req.headers['content-type'],
-            'auth-scheme': authMethodUsed
+            'content-type': req.headers['content-type']
         },
         payload: req.body
     };
 
-    addLog(inboundLogs, inboundEntry);
-    console.log(`[ServiceNow Inbound] ID: ${syncId} | Auth: ${authMethodUsed}`);
+    addLog(store.inbound, inboundEntry);
+    console.log(`[ServiceNow Inbound] Device: ${targetToken || 'Global'} | ID: ${syncId}`);
 
     res.status(200).json({
         status: 'Success',
-        message: 'Inbound ServiceNow payload successfully ingested by NexRelay.',
+        message: 'Inbound ServiceNow payload successfully ingested into device session.',
         record: inboundEntry
     });
 });
 
-// 2. Postman-Style Outbound HTTP Proxy
+// 2. Postman-Style Outbound HTTP Proxy (Scorched-earth isolated per device)
 app.post('/api/v1/servicenow/outbound', async (req, res) => {
     const { method, url, authType, basicUser, basicPass, bearerToken, apiKeyHeaderName, apiKeyValue, headers, body } = req.body;
+    const deviceToken = req.headers['x-device-token'];
+    const store = getStore(deviceToken);
 
     if (!url || !method) {
         return res.status(400).json({ 
@@ -123,7 +114,7 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
     if (!isAllowedUrl(url)) {
         return res.status(400).json({
             status: 'Error',
-            message: 'Blocked: only https URLs on these hosts are allowed: ' + ALLOWED_HOSTS.join(', ') + '. To change this, set the ALLOWED_HOSTS environment variable on Render.'
+            message: 'Blocked: only https URLs on these hosts are allowed: ' + ALLOWED_HOSTS.join(', ') + '.'
         });
     }
 
@@ -190,7 +181,7 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
         diagnosticError = error.message;
         responseData = {
             error: error.message,
-            diagnosticAdvice: 'Verify that your ServiceNow Personal Developer Instance (PDI) is online and reachable. Check firewall rules, VPN configurations, and ensure the URL prefix matches standard instance routing.'
+            diagnosticAdvice: 'Verify that your ServiceNow Personal Developer Instance (PDI) is online and reachable.'
         };
     }
 
@@ -208,8 +199,8 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
         responsePayload: responseData
     };
 
-    addLog(outboundLogs, outboundEntry);
-    console.log(`[ServiceNow Outbound] ${method.toUpperCase()} ${url} -> ${responseStatus} (${durationMs}ms)`);
+    addLog(store.outbound, outboundEntry);
+    console.log(`[ServiceNow Outbound] Device: ${deviceToken || 'Global'} | ${method.toUpperCase()} ${url} -> ${responseStatus}`);
 
     res.status(200).json({
         status: 'Completed',
@@ -217,27 +208,34 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
     });
 });
 
-// 2b. Logs endpoints
+// 2b. Device-Scoped Logs Endpoints
 app.get('/api/v1/servicenow/logs', (req, res) => {
-    res.json({ inbound: inboundLogs, outbound: outboundLogs });
+    const deviceToken = req.headers['x-device-token'];
+    const store = getStore(deviceToken);
+    res.json({ inbound: store.inbound, outbound: store.outbound });
 });
 
 app.delete('/api/v1/servicenow/logs', (req, res) => {
-    inboundLogs = [];
-    outboundLogs = [];
+    const deviceToken = req.headers['x-device-token'];
+    const store = getStore(deviceToken);
+    store.inbound = [];
+    store.outbound = [];
     res.json({ status: 'Cleared' });
 });
 
 app.delete('/api/v1/servicenow/logs/:id', (req, res) => {
+    const deviceToken = req.headers['x-device-token'];
+    const store = getStore(deviceToken);
     const targetId = req.params.id;
-    const initialInboundLen = inboundLogs.length;
-    const initialOutboundLen = outboundLogs.length;
 
-    inboundLogs = inboundLogs.filter(item => item.id !== targetId);
-    outboundLogs = outboundLogs.filter(item => item.id !== targetId);
+    const initialInboundLen = store.inbound.length;
+    const initialOutboundLen = store.outbound.length;
 
-    if (inboundLogs.length === initialInboundLen && outboundLogs.length === initialOutboundLen) {
-        return res.status(404).json({ status: 'Error', message: 'Record not found.' });
+    store.inbound = store.inbound.filter(item => item.id !== targetId);
+    store.outbound = store.outbound.filter(item => item.id !== targetId);
+
+    if (store.inbound.length === initialInboundLen && store.outbound.length === initialOutboundLen) {
+        return res.status(404).json({ status: 'Error', message: 'Record not found in this device session.' });
     }
 
     res.json({ status: 'Success', message: `Record ${targetId} deleted.` });
@@ -247,7 +245,7 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok', uptimeSeconds: Math.round(process.uptime()) });
 });
 
-// 3. Masterpiece Frontend
+// 3. Masterpiece Frontend (Per-Device Isolation + Stunning Background + Complete Auth Options)
 app.get('/', (req, res) => {
     res.send(`<!DOCTYPE html>
 <html lang="en">
@@ -286,7 +284,6 @@ app.get('/', (req, res) => {
             position: relative;
         }
 
-        /* Heavy Multi-Layered Background Animations */
         #bgCanvas {
             position: fixed;
             top: 0; left: 0; width: 100vw; height: 100vh;
@@ -333,7 +330,6 @@ app.get('/', (req, res) => {
             100% { opacity: 1; }
         }
 
-        /* Custom Glowing Cursor */
         .cursor-dot {
             position: fixed; top: 0; left: 0; width: 8px; height: 8px;
             background: var(--cyan); border-radius: 50%;
@@ -451,7 +447,6 @@ app.get('/', (req, res) => {
         }
         textarea { font-family: ui-monospace, monospace; font-size: 12px; resize: vertical; }
 
-        /* Clean Separated Input + Eye Icon Wrapper */
         .secret-field-wrapper {
             display: flex;
             align-items: stretch;
@@ -589,7 +584,7 @@ app.get('/', (req, res) => {
             </div>
             <div class="status-badge">
                 <div class="status-dot"></div>
-                Secure Gateway Online
+                Secure Gateway Online (<span id="deviceIdBadge" style="font-family: monospace;">Device Session</span>)
             </div>
         </header>
 
@@ -600,18 +595,18 @@ app.get('/', (req, res) => {
             <button class="nav-btn" id="tabLogs" onclick="switchPanel('logs', this)">Execution Logs (<span id="logCount">0</span>)</button>
         </div>
 
-        <!-- Panel 1: Inbound Link (Supports All ServiceNow Auth Schemes Randomly per Device) -->
+        <!-- Panel 1: Inbound Link -->
         <div id="panel-inbound" class="workspace-panel active">
             <div class="card" style="max-width: 740px;">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
                     <div>
                         <h2>Inbound Webhook Endpoint</h2>
-                        <p class="sub" style="margin-bottom: 0;">Configure ServiceNow Outbound REST Messages or Business Rules with any supported authentication scheme below.</p>
+                        <p class="sub" style="margin-bottom: 0;">This unique URL is scoped exclusively to your current device session. Payloads sent here will only appear on this device.</p>
                     </div>
-                    <button type="button" class="nav-btn" style="padding: 8px 14px; font-size: 12px; white-space: nowrap;" onclick="regenerateInboundCreds()">↻ Randomize Keys</button>
+                    <button type="button" class="nav-btn" style="padding: 8px 14px; font-size: 12px; white-space: nowrap;" onclick="regenerateDeviceSession()">↻ New Fresh Session</button>
                 </div>
 
-                <label>Secured Inbound Webhook URL</label>
+                <label>Secured Device-Scoped Inbound Webhook URL</label>
                 <div style="display: flex; gap: 10px; margin-bottom: 22px;">
                     <input type="text" id="inboundUrlBox" readonly style="margin-bottom: 0; font-family: monospace; color: var(--cyan);" />
                     <button class="btn-primary" style="width: auto; padding: 0 24px;" onclick="copyText('inboundUrlBox', 'Inbound Webhook Link')">Copy Link</button>
@@ -624,9 +619,8 @@ app.get('/', (req, res) => {
                     <option value="apikey">API Key Authentication (x-sn-apikey Header)</option>
                 </select>
 
-                <!-- 1. Inbound Bearer Token -->
                 <div id="inb-scheme-bearer">
-                    <label>Required Authorization Header (Device-Specific Random Bearer Token)</label>
+                    <label>Required Authorization Header (Device Ephemeral Bearer Token)</label>
                     <div style="display: flex; gap: 10px;">
                         <div class="secret-field-wrapper" style="flex: 1;">
                             <input type="password" id="authHeaderBox" readonly style="font-family: monospace; color: var(--text-muted);" />
@@ -638,18 +632,17 @@ app.get('/', (req, res) => {
                     </div>
                 </div>
 
-                <!-- 2. Inbound Basic Auth (Separate Random Username & Password) -->
                 <div id="inb-scheme-basic" style="display: none;">
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                         <div>
-                            <label>Random ServiceNow Basic Username</label>
+                            <label>Basic Username</label>
                             <div style="display: flex; gap: 8px;">
                                 <input type="text" id="inbBasicUserBox" readonly style="margin-bottom: 0; font-family: monospace; color: var(--cyan);" />
                                 <button class="btn-primary" style="width: auto; padding: 0 14px;" onclick="copyText('inbBasicUserBox', 'Username')">Copy</button>
                             </div>
                         </div>
                         <div>
-                            <label>Random ServiceNow Basic Password</label>
+                            <label>Basic Password</label>
                             <div style="display: flex; gap: 8px;">
                                 <div class="secret-field-wrapper" style="flex: 1;">
                                     <input type="password" id="inbBasicPassBox" readonly style="font-family: monospace; color: var(--text-muted);" />
@@ -663,9 +656,8 @@ app.get('/', (req, res) => {
                     </div>
                 </div>
 
-                <!-- 3. Inbound API Key -->
                 <div id="inb-scheme-apikey" style="display: none;">
-                    <label>Required Header: <code>x-sn-apikey</code> (Device-Specific Random API Key)</label>
+                    <label>Required Header: <code>x-sn-apikey</code></label>
                     <div style="display: flex; gap: 10px;">
                         <div class="secret-field-wrapper" style="flex: 1;">
                             <input type="password" id="inbApiKeyBox" readonly style="font-family: monospace; color: var(--text-muted);" />
@@ -703,7 +695,6 @@ app.get('/', (req, res) => {
                     <button class="pm-tab" onclick="switchPmTab('body', this)">Body (JSON)</button>
                 </div>
 
-                <!-- Auth Sub-panel -->
                 <div id="pm-auth" class="pm-panel active">
                     <label>Auth Type</label>
                     <select id="authType" onchange="updateAuthFields()">
@@ -760,7 +751,6 @@ app.get('/', (req, res) => {
                     </div>
                 </div>
 
-                <!-- Headers Sub-panel -->
                 <div id="pm-headers" class="pm-panel">
                     <div id="headersList">
                         <div class="header-row">
@@ -772,7 +762,6 @@ app.get('/', (req, res) => {
                     <button type="button" class="nav-btn" style="padding: 8px 16px; font-size: 12px; margin-top: 8px;" onclick="addHeaderRow()">+ Add Header</button>
                 </div>
 
-                <!-- Body Sub-panel -->
                 <div id="pm-body" class="pm-panel">
                     <label>Raw JSON Body</label>
                     <textarea id="httpBody" rows="6">{
@@ -789,10 +778,10 @@ app.get('/', (req, res) => {
         <div id="panel-logs" class="workspace-panel">
             <div class="card" style="background: transparent; border: none; padding: 0; box-shadow: none;">
                 <h2>Execution History & Diagnostics</h2>
-                <p class="sub">Real-time audit trail of inbound webhook receptions and outbound proxy responses.</p>
-                <button type="button" class="nav-btn" style="padding: 8px 16px; font-size: 12px; margin-bottom: 18px;" onclick="clearLogs()">Clear All Logs</button>
+                <p class="sub">Real-time audit trail of inbound webhook receptions and outbound proxy responses for this device session.</p>
+                <button type="button" class="nav-btn" style="padding: 8px 16px; font-size: 12px; margin-bottom: 18px;" onclick="clearLogs()">Clear Device Logs</button>
                 <div id="logsContainer">
-                    <div class="empty">No execution logs recorded in this session.</div>
+                    <div class="empty">No execution logs recorded in this device session yet.</div>
                 </div>
             </div>
         </div>
@@ -804,41 +793,49 @@ app.get('/', (req, res) => {
                 .map(b => b.toString(16).padStart(2, '0')).join('');
         }
 
-        function initDeviceCredentials(forceNew = false) {
-            let deviceToken = !forceNew && localStorage.getItem('nex_device_token');
-            let basicUser = !forceNew && localStorage.getItem('nex_device_user');
-            let basicPass = !forceNew && localStorage.getItem('nex_device_pass');
-            let apiKey = !forceNew && localStorage.getItem('nex_device_apikey');
+        // Per-Device Session Initialization (Fresh data on new device/system)
+        let deviceToken = localStorage.getItem('nex_device_token');
+        let basicUser = localStorage.getItem('nex_device_user');
+        let basicPass = localStorage.getItem('nex_device_pass');
+        let apiKey = localStorage.getItem('nex_device_apikey');
 
-            if (!deviceToken) {
+        function initDeviceCredentials(forceNew = false) {
+            if (forceNew || !deviceToken) {
                 deviceToken = 'sn_dev_' + randomHex(24);
                 localStorage.setItem('nex_device_token', deviceToken);
             }
-            if (!basicUser) {
+            if (forceNew || !basicUser) {
                 basicUser = 'sn_user_' + randomHex(6);
                 localStorage.setItem('nex_device_user', basicUser);
             }
-            if (!basicPass) {
+            if (forceNew || !basicPass) {
                 basicPass = 'sn_pass_' + randomHex(16);
                 localStorage.setItem('nex_device_pass', basicPass);
             }
-            if (!apiKey) {
+            if (forceNew || !apiKey) {
                 apiKey = 'sn_key_' + randomHex(20);
                 localStorage.setItem('nex_device_apikey', apiKey);
             }
 
-            document.getElementById('inboundUrlBox').value = window.location.origin + '/api/v1/servicenow/inbound';
+            document.getElementById('inboundUrlBox').value = window.location.origin + '/api/v1/servicenow/inbound/' + deviceToken;
             document.getElementById('authHeaderBox').value = 'Authorization: Bearer ' + deviceToken;
             document.getElementById('inbBasicUserBox').value = basicUser;
             document.getElementById('inbBasicPassBox').value = basicPass;
             document.getElementById('inbApiKeyBox').value = apiKey;
+            document.getElementById('deviceIdBadge').innerText = deviceToken.slice(0, 12) + '...';
         }
 
         initDeviceCredentials(false);
 
-        function regenerateInboundCreds() {
+        function regenerateDeviceSession() {
+            if (!confirm('Generate a brand new device session? This will start with a fresh workspace.')) return;
             initDeviceCredentials(true);
-            alert('Generated new random Bearer Token, Basic Auth credentials, and API Key for this device!');
+            lastLogSignature = '';
+            inboundData = [];
+            outboundData = [];
+            updateLogCount();
+            renderLogs();
+            alert('Created a fresh device session with a new unique inbound URL and randomized keys!');
         }
 
         function updateInboundAuthUI() {
@@ -854,7 +851,6 @@ app.get('/', (req, res) => {
             alert(label + ' copied to clipboard!');
         }
 
-        // Clean SVG Eye / Eye-Off Toggle Function
         const eyeOpenSvg = '<svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
         const eyeOffSvg = '<svg viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
 
@@ -957,7 +953,6 @@ app.get('/', (req, res) => {
         }
         animateCanvas();
 
-        // Custom Glowing Cursor Movement
         const dot = document.getElementById('cursorDot');
         const outline = document.getElementById('cursorOutline');
         let mouseX = 0, mouseY = 0, outlineX = 0, outlineY = 0;
@@ -985,7 +980,6 @@ app.get('/', (req, res) => {
         }
         bindHoverListeners();
 
-        // Single Panel Display Switcher
         function switchPanel(panelId, btn) {
             document.querySelectorAll('.workspace-panel').forEach(p => p.classList.remove('active'));
             document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
@@ -1048,9 +1042,12 @@ app.get('/', (req, res) => {
         }
 
         async function clearLogs() {
-            if (!confirm('Delete all logs from the server?')) return;
+            if (!confirm('Delete all device logs from the server?')) return;
             try {
-                await fetch('/api/v1/servicenow/logs', { method: 'DELETE' });
+                await fetch('/api/v1/servicenow/logs', {
+                    method: 'DELETE',
+                    headers: { 'X-Device-Token': deviceToken }
+                });
                 lastLogSignature = '';
                 inboundData = [];
                 outboundData = [];
@@ -1062,7 +1059,10 @@ app.get('/', (req, res) => {
         async function deleteRecord(recordId) {
             if (!confirm('Delete this record?')) return;
             try {
-                const res = await fetch('/api/v1/servicenow/logs/' + encodeURIComponent(recordId), { method: 'DELETE' });
+                const res = await fetch('/api/v1/servicenow/logs/' + encodeURIComponent(recordId), {
+                    method: 'DELETE',
+                    headers: { 'X-Device-Token': deviceToken }
+                });
                 if (res.ok) {
                     inboundData = inboundData.filter(item => item.id !== recordId);
                     outboundData = outboundData.filter(item => item.id !== recordId);
@@ -1080,7 +1080,9 @@ app.get('/', (req, res) => {
         async function loadServerLogs() {
             if (document.hidden) return;
             try {
-                const res = await fetch('/api/v1/servicenow/logs');
+                const res = await fetch('/api/v1/servicenow/logs', {
+                    headers: { 'X-Device-Token': deviceToken }
+                });
                 const data = await res.json();
                 const signature = (data.inbound[0] ? data.inbound[0].id : '') + '|' +
                                   (data.outbound[0] ? data.outbound[0].id : '') + '|' +
@@ -1138,7 +1140,10 @@ app.get('/', (req, res) => {
             try {
                 const res = await fetch('/api/v1/servicenow/outbound', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Device-Token': deviceToken
+                    },
                     body: JSON.stringify({ method, url, authType, basicUser, basicPass, bearerToken, apiKeyHeaderName, apiKeyValue, headers, body: parsedBody })
                 });
                 const data = await res.json();
@@ -1163,7 +1168,7 @@ app.get('/', (req, res) => {
                 .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
             if (!allLogs.length) {
-                container.innerHTML = \`<div class="empty">No execution logs recorded in this session.</div>\`;
+                container.innerHTML = \`<div class="empty">No execution logs recorded in this device session.</div>\`;
                 return;
             }
 
@@ -1202,7 +1207,7 @@ app.get('/', (req, res) => {
                             </div>
                             <div style="font-family: monospace; font-size: 12px; color: var(--cyan); margin-bottom: 8px; word-break: break-all;">\${esc(item.url)}</div>
                             <label style="margin-top: 8px;">Response Payload</label>
-                            <pre>\${esc(JSON.stringify(item.responsePayload, null, 2))}</pre>
+                            <pre>\{esc(JSON.stringify(item.responsePayload, null, 2))}</pre>
                         </div>
                     \`;
                 }
