@@ -11,7 +11,7 @@ app.use(bodyParser.json({ limit: '1mb' }));
 
 // ---- Settings (can be changed on Render under Environment, no code edit needed) ----
 const MAX_LOGS = 200;                                   // keep only the latest 200 logs per direction
-const INBOUND_TOKEN = process.env.INBOUND_TOKEN || '';  // if set, ONLY this exact token is accepted
+const INBOUND_TOKEN = process.env.INBOUND_TOKEN || '';  // if set, ONLY this exact Bearer token is accepted
 const ALLOWED_HOSTS = (process.env.ALLOWED_HOSTS || '.service-now.com')
     .split(',').map(h => h.trim().toLowerCase()).filter(Boolean);
 const OUTBOUND_TIMEOUT_MS = 30000;
@@ -29,7 +29,6 @@ function safeParse(text) {
     try { return JSON.parse(text); } catch { return text; }
 }
 
-// Outbound proxy safety: only https URLs on allowed hosts (stops strangers using your server as an open proxy)
 function isAllowedUrl(rawUrl) {
     try {
         const u = new URL(rawUrl);
@@ -41,18 +40,47 @@ function isAllowedUrl(rawUrl) {
     } catch { return false; }
 }
 
-// 1. ServiceNow Inbound REST Endpoint
+// 1. ServiceNow Inbound REST Endpoint (Supports Bearer Token, Basic Auth, and API Key)
 app.post('/api/v1/servicenow/inbound', (req, res) => {
-    const authHeader = req.headers['authorization'];
+    const authHeader = req.headers['authorization'] || '';
+    const apiKeyHeader = req.headers['x-sn-apikey'] || req.headers['x-api-key'] || '';
 
-    const tokenOk = INBOUND_TOKEN
-        ? authHeader === 'Bearer ' + INBOUND_TOKEN
-        : (authHeader && (authHeader.startsWith('Bearer sn_nex_') || authHeader.startsWith('Bearer sn_dev_')));
+    let authVerified = false;
+    let authMethodUsed = 'None';
 
-    if (!tokenOk) {
+    if (INBOUND_TOKEN) {
+        if (authHeader === 'Bearer ' + INBOUND_TOKEN) {
+            authVerified = true;
+            authMethodUsed = 'Bearer Token (Env Enforced)';
+        }
+    } else {
+        // 1. Validate Bearer Token (OAuth 2.0 / Token Auth)
+        if (authHeader.startsWith('Bearer sn_nex_') || authHeader.startsWith('Bearer sn_dev_')) {
+            authVerified = true;
+            authMethodUsed = 'Bearer Token';
+        }
+        // 2. Validate Basic Auth (Base64 encoded sn_user_*:sn_pass_*)
+        else if (authHeader.startsWith('Basic ')) {
+            try {
+                const decoded = Buffer.from(authHeader.slice(6), 'base64').toString('utf8');
+                const [user, pass] = decoded.split(':');
+                if (user && pass && user.startsWith('sn_user_') && pass.startsWith('sn_pass_')) {
+                    authVerified = true;
+                    authMethodUsed = `Basic Auth (${user})`;
+                }
+            } catch {}
+        }
+        // 3. Validate API Key Header (x-sn-apikey / x-api-key)
+        else if (apiKeyHeader.startsWith('sn_key_')) {
+            authVerified = true;
+            authMethodUsed = 'API Key (x-sn-apikey)';
+        }
+    }
+
+    if (!authVerified) {
         return res.status(401).json({ 
             status: 'Error', 
-            message: 'Authentication failed: The provided Bearer token in the Authorization header is invalid or missing.' 
+            message: 'Authentication failed: Provide a valid ServiceNow Bearer Token, Basic Auth credentials, or x-sn-apikey header.' 
         });
     }
 
@@ -62,16 +90,17 @@ app.post('/api/v1/servicenow/inbound', (req, res) => {
     const inboundEntry = {
         id: syncId,
         direction: 'INBOUND',
+        authMethod: authMethodUsed,
         timestamp,
         headers: {
             'content-type': req.headers['content-type'],
-            'authorization': 'Bearer ********'
+            'auth-scheme': authMethodUsed
         },
         payload: req.body
     };
 
     addLog(inboundLogs, inboundEntry);
-    console.log(`[ServiceNow Inbound] ID: ${syncId}`);
+    console.log(`[ServiceNow Inbound] ID: ${syncId} | Auth: ${authMethodUsed}`);
 
     res.status(200).json({
         status: 'Success',
@@ -82,7 +111,7 @@ app.post('/api/v1/servicenow/inbound', (req, res) => {
 
 // 2. Postman-Style Outbound HTTP Proxy
 app.post('/api/v1/servicenow/outbound', async (req, res) => {
-    const { method, url, authType, basicUser, basicPass, bearerToken, headers, body } = req.body;
+    const { method, url, authType, basicUser, basicPass, bearerToken, apiKeyHeaderName, apiKeyValue, headers, body } = req.body;
 
     if (!url || !method) {
         return res.status(400).json({ 
@@ -118,6 +147,9 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
         requestHeaders['Authorization'] = 'Basic ' + Buffer.from(combined).toString('base64');
     } else if (authType === 'bearer' && bearerToken) {
         requestHeaders['Authorization'] = `Bearer ${bearerToken}`;
+    } else if (authType === 'apikey' && apiKeyValue) {
+        const headerName = (apiKeyHeaderName && apiKeyHeaderName.trim()) ? apiKeyHeaderName.trim() : 'x-sn-apikey';
+        requestHeaders[headerName] = apiKeyValue;
     }
 
     const fetchOptions = {
@@ -196,7 +228,6 @@ app.delete('/api/v1/servicenow/logs', (req, res) => {
     res.json({ status: 'Cleared' });
 });
 
-// Endpoint to delete an individual record by id
 app.delete('/api/v1/servicenow/logs/:id', (req, res) => {
     const targetId = req.params.id;
     const initialInboundLen = inboundLogs.length;
@@ -216,7 +247,7 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok', uptimeSeconds: Math.round(process.uptime()) });
 });
 
-// 3. Masterpiece Frontend (Heavy Background Aurora + Constellation Mesh + Individual Delete Buttons)
+// 3. Masterpiece Frontend
 app.get('/', (req, res) => {
     res.send(`<!DOCTYPE html>
 <html lang="en">
@@ -420,7 +451,7 @@ app.get('/', (req, res) => {
         }
         textarea { font-family: ui-monospace, monospace; font-size: 12px; resize: vertical; }
 
-        /* Clean Separated Input + Eye Icon Wrapper (Zero Text Overlap) */
+        /* Clean Separated Input + Eye Icon Wrapper */
         .secret-field-wrapper {
             display: flex;
             align-items: stretch;
@@ -503,7 +534,6 @@ app.get('/', (req, res) => {
         .btn-primary:hover:not(:disabled) { filter: brightness(1.12); transform: translateY(-1px); }
         .btn-primary:disabled { background: var(--surface-elevated); color: var(--text-muted); cursor: not-allowed; box-shadow: none; }
 
-        /* Individual delete button style for record cards */
         .btn-delete-record {
             background: rgba(244, 63, 94, 0.12);
             border: 1px solid rgba(244, 63, 94, 0.35);
@@ -570,24 +600,81 @@ app.get('/', (req, res) => {
             <button class="nav-btn" id="tabLogs" onclick="switchPanel('logs', this)">Execution Logs (<span id="logCount">0</span>)</button>
         </div>
 
-        <!-- Panel 1: Inbound Link Only -->
+        <!-- Panel 1: Inbound Link (Supports All ServiceNow Auth Schemes Randomly per Device) -->
         <div id="panel-inbound" class="workspace-panel active">
-            <div class="card" style="max-width: 720px;">
-                <h2>Inbound Webhook Endpoint</h2>
-                <p class="sub">Provide this exact website link and device-specific session token to your ServiceNow instance to ingest payloads.</p>
+            <div class="card" style="max-width: 740px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
+                    <div>
+                        <h2>Inbound Webhook Endpoint</h2>
+                        <p class="sub" style="margin-bottom: 0;">Configure ServiceNow Outbound REST Messages or Business Rules with any supported authentication scheme below.</p>
+                    </div>
+                    <button type="button" class="nav-btn" style="padding: 8px 14px; font-size: 12px; white-space: nowrap;" onclick="regenerateInboundCreds()">↻ Randomize Keys</button>
+                </div>
 
                 <label>Secured Inbound Webhook URL</label>
                 <div style="display: flex; gap: 10px; margin-bottom: 22px;">
                     <input type="text" id="inboundUrlBox" readonly style="margin-bottom: 0; font-family: monospace; color: var(--cyan);" />
-                    <button class="btn-primary" style="width: auto; padding: 0 24px;" onclick="copyInboundUrl()">Copy Link</button>
+                    <button class="btn-primary" style="width: auto; padding: 0 24px;" onclick="copyText('inboundUrlBox', 'Inbound Webhook Link')">Copy Link</button>
                 </div>
 
-                <label>Required Authorization Header (Device-Specific Ephemeral Bearer Token)</label>
-                <div class="secret-field-wrapper">
-                    <input type="password" id="authHeaderBox" readonly style="font-family: monospace; color: var(--text-muted);" />
-                    <button type="button" class="eye-btn" title="Show/Hide Token" onclick="toggleVisibility('authHeaderBox', this)">
-                        <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                    </button>
+                <label>ServiceNow Inbound Authentication Scheme</label>
+                <select id="inbAuthScheme" onchange="updateInboundAuthUI()">
+                    <option value="bearer">OAuth 2.0 / Bearer Token (Authorization Header)</option>
+                    <option value="basic">Basic Authentication (Username & Password)</option>
+                    <option value="apikey">API Key Authentication (x-sn-apikey Header)</option>
+                </select>
+
+                <!-- 1. Inbound Bearer Token -->
+                <div id="inb-scheme-bearer">
+                    <label>Required Authorization Header (Device-Specific Random Bearer Token)</label>
+                    <div style="display: flex; gap: 10px;">
+                        <div class="secret-field-wrapper" style="flex: 1;">
+                            <input type="password" id="authHeaderBox" readonly style="font-family: monospace; color: var(--text-muted);" />
+                            <button type="button" class="eye-btn" title="Show/Hide Token" onclick="toggleVisibility('authHeaderBox', this)">
+                                <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                            </button>
+                        </div>
+                        <button class="btn-primary" style="width: auto; padding: 0 20px;" onclick="copyText('authHeaderBox', 'Bearer Header')">Copy</button>
+                    </div>
+                </div>
+
+                <!-- 2. Inbound Basic Auth (Separate Random Username & Password) -->
+                <div id="inb-scheme-basic" style="display: none;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                        <div>
+                            <label>Random ServiceNow Basic Username</label>
+                            <div style="display: flex; gap: 8px;">
+                                <input type="text" id="inbBasicUserBox" readonly style="margin-bottom: 0; font-family: monospace; color: var(--cyan);" />
+                                <button class="btn-primary" style="width: auto; padding: 0 14px;" onclick="copyText('inbBasicUserBox', 'Username')">Copy</button>
+                            </div>
+                        </div>
+                        <div>
+                            <label>Random ServiceNow Basic Password</label>
+                            <div style="display: flex; gap: 8px;">
+                                <div class="secret-field-wrapper" style="flex: 1;">
+                                    <input type="password" id="inbBasicPassBox" readonly style="font-family: monospace; color: var(--text-muted);" />
+                                    <button type="button" class="eye-btn" title="Show/Hide Password" onclick="toggleVisibility('inbBasicPassBox', this)">
+                                        <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                    </button>
+                                </div>
+                                <button class="btn-primary" style="width: auto; padding: 0 14px;" onclick="copyText('inbBasicPassBox', 'Password')">Copy</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. Inbound API Key -->
+                <div id="inb-scheme-apikey" style="display: none;">
+                    <label>Required Header: <code>x-sn-apikey</code> (Device-Specific Random API Key)</label>
+                    <div style="display: flex; gap: 10px;">
+                        <div class="secret-field-wrapper" style="flex: 1;">
+                            <input type="password" id="inbApiKeyBox" readonly style="font-family: monospace; color: var(--text-muted);" />
+                            <button type="button" class="eye-btn" title="Show/Hide API Key" onclick="toggleVisibility('inbApiKeyBox', this)">
+                                <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                            </button>
+                        </div>
+                        <button class="btn-primary" style="width: auto; padding: 0 20px;" onclick="copyText('inbApiKeyBox', 'API Key')">Copy</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -622,6 +709,7 @@ app.get('/', (req, res) => {
                     <select id="authType" onchange="updateAuthFields()">
                         <option value="basic">Basic Auth (Separate Username & Password)</option>
                         <option value="bearer">Bearer Token (OAuth 2.0)</option>
+                        <option value="apikey">API Key (Custom Header)</option>
                         <option value="none">No Auth</option>
                     </select>
 
@@ -650,6 +738,24 @@ app.get('/', (req, res) => {
                             <button type="button" class="eye-btn" title="Show/Hide Token" onclick="toggleVisibility('bearerToken', this)">
                                 <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                             </button>
+                        </div>
+                    </div>
+
+                    <div id="apiKeyAuthFields" style="display: none;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                            <div>
+                                <label>Header Name</label>
+                                <input type="text" id="apiKeyHeaderName" value="x-sn-apikey" style="margin-bottom: 0;" />
+                            </div>
+                            <div>
+                                <label>API Key Value</label>
+                                <div class="secret-field-wrapper">
+                                    <input type="password" id="apiKeyValue" placeholder="Paste ServiceNow API Key" />
+                                    <button type="button" class="eye-btn" title="Show/Hide API Key" onclick="toggleVisibility('apiKeyValue', this)">
+                                        <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -693,23 +799,59 @@ app.get('/', (req, res) => {
     </div>
 
     <script>
-        // Generate or retrieve randomized ephemeral device token
-        let deviceToken = localStorage.getItem('nex_device_token');
-        if (!deviceToken) {
-            const randomHex = Array.from(crypto.getRandomValues(new Uint8Array(24)))
+        function randomHex(bytes) {
+            return Array.from(crypto.getRandomValues(new Uint8Array(bytes)))
                 .map(b => b.toString(16).padStart(2, '0')).join('');
-            deviceToken = 'sn_dev_' + randomHex;
-            localStorage.setItem('nex_device_token', deviceToken);
         }
 
-        // Set dynamic inbound URL and randomized device token header
-        document.getElementById('inboundUrlBox').value = window.location.origin + '/api/v1/servicenow/inbound';
-        document.getElementById('authHeaderBox').value = 'Authorization: Bearer ' + deviceToken;
+        function initDeviceCredentials(forceNew = false) {
+            let deviceToken = !forceNew && localStorage.getItem('nex_device_token');
+            let basicUser = !forceNew && localStorage.getItem('nex_device_user');
+            let basicPass = !forceNew && localStorage.getItem('nex_device_pass');
+            let apiKey = !forceNew && localStorage.getItem('nex_device_apikey');
 
-        function copyInboundUrl() {
-            const box = document.getElementById('inboundUrlBox');
+            if (!deviceToken) {
+                deviceToken = 'sn_dev_' + randomHex(24);
+                localStorage.setItem('nex_device_token', deviceToken);
+            }
+            if (!basicUser) {
+                basicUser = 'sn_user_' + randomHex(6);
+                localStorage.setItem('nex_device_user', basicUser);
+            }
+            if (!basicPass) {
+                basicPass = 'sn_pass_' + randomHex(16);
+                localStorage.setItem('nex_device_pass', basicPass);
+            }
+            if (!apiKey) {
+                apiKey = 'sn_key_' + randomHex(20);
+                localStorage.setItem('nex_device_apikey', apiKey);
+            }
+
+            document.getElementById('inboundUrlBox').value = window.location.origin + '/api/v1/servicenow/inbound';
+            document.getElementById('authHeaderBox').value = 'Authorization: Bearer ' + deviceToken;
+            document.getElementById('inbBasicUserBox').value = basicUser;
+            document.getElementById('inbBasicPassBox').value = basicPass;
+            document.getElementById('inbApiKeyBox').value = apiKey;
+        }
+
+        initDeviceCredentials(false);
+
+        function regenerateInboundCreds() {
+            initDeviceCredentials(true);
+            alert('Generated new random Bearer Token, Basic Auth credentials, and API Key for this device!');
+        }
+
+        function updateInboundAuthUI() {
+            const scheme = document.getElementById('inbAuthScheme').value;
+            document.getElementById('inb-scheme-bearer').style.display = scheme === 'bearer' ? 'block' : 'none';
+            document.getElementById('inb-scheme-basic').style.display = scheme === 'basic' ? 'block' : 'none';
+            document.getElementById('inb-scheme-apikey').style.display = scheme === 'apikey' ? 'block' : 'none';
+        }
+
+        function copyText(elementId, label) {
+            const box = document.getElementById(elementId);
             navigator.clipboard.writeText(box.value);
-            alert('Inbound Webhook Link copied to clipboard successfully!');
+            alert(label + ' copied to clipboard!');
         }
 
         // Clean SVG Eye / Eye-Off Toggle Function
@@ -771,7 +913,6 @@ app.get('/', (req, res) => {
                 if (n.x < 0 || n.x > width) n.vx *= -1;
                 if (n.y < 0 || n.y > height) n.vy *= -1;
 
-                // Subtle magnetic drift toward cursor
                 const dxMouse = pointer.x - n.x;
                 const dyMouse = pointer.y - n.y;
                 const distMouse = Math.hypot(dxMouse, dyMouse);
@@ -788,7 +929,6 @@ app.get('/', (req, res) => {
                     : \`rgba(99, 102, 241, \${glowAlpha + 0.1})\`;
                 ctx.fill();
 
-                // Connect nearby nodes
                 for (let j = i + 1; j < nodes.length; j++) {
                     const n2 = nodes[j];
                     const dist = Math.hypot(n.x - n2.x, n.y - n2.y);
@@ -803,7 +943,6 @@ app.get('/', (req, res) => {
                     }
                 }
 
-                // Connect nodes to cursor
                 if (distMouse < 180) {
                     const mouseLineAlpha = (1 - distMouse / 180) * 0.35;
                     ctx.beginPath();
@@ -863,19 +1002,9 @@ app.get('/', (req, res) => {
 
         function updateAuthFields() {
             const type = document.getElementById('authType').value;
-            const basicFields = document.getElementById('basicAuthFields');
-            const bearerField = document.getElementById('bearerAuthField');
-
-            if (type === 'basic') {
-                basicFields.style.display = 'block';
-                bearerField.style.display = 'none';
-            } else if (type === 'bearer') {
-                basicFields.style.display = 'none';
-                bearerField.style.display = 'block';
-            } else {
-                basicFields.style.display = 'none';
-                bearerField.style.display = 'none';
-            }
+            document.getElementById('basicAuthFields').style.display = type === 'basic' ? 'block' : 'none';
+            document.getElementById('bearerAuthField').style.display = type === 'bearer' ? 'block' : 'none';
+            document.getElementById('apiKeyAuthFields').style.display = type === 'apikey' ? 'block' : 'none';
         }
 
         function addHeaderRow() {
@@ -905,8 +1034,8 @@ app.get('/', (req, res) => {
         }
 
         let sendingRequest = false;
-
         let lastLogSignature = '';
+
         function esc(value) {
             return String(value === undefined || value === null ? '' : value)
                 .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -930,7 +1059,6 @@ app.get('/', (req, res) => {
             } catch (e) { console.error(e); }
         }
 
-        // Delete an individual record by its unique ID
         async function deleteRecord(recordId) {
             if (!confirm('Delete this record?')) return;
             try {
@@ -981,6 +1109,8 @@ app.get('/', (req, res) => {
             const basicUser = document.getElementById('basicUser').value;
             const basicPass = document.getElementById('basicPass').value;
             const bearerToken = document.getElementById('bearerToken').value;
+            const apiKeyHeaderName = document.getElementById('apiKeyHeaderName').value;
+            const apiKeyValue = document.getElementById('apiKeyValue').value;
             const rawBody = document.getElementById('httpBody').value;
 
             const headers = {};
@@ -1009,7 +1139,7 @@ app.get('/', (req, res) => {
                 const res = await fetch('/api/v1/servicenow/outbound', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ method, url, authType, basicUser, basicPass, bearerToken, headers, body: parsedBody })
+                    body: JSON.stringify({ method, url, authType, basicUser, basicPass, bearerToken, apiKeyHeaderName, apiKeyValue, headers, body: parsedBody })
                 });
                 const data = await res.json();
                 if (res.ok && data.record) {
@@ -1044,6 +1174,7 @@ app.get('/', (req, res) => {
                             <div class="log-meta">
                                 <div>
                                     <span class="badge">SERVICENOW INBOUND</span>
+                                    <span class="badge badge-ok" style="margin-left: 6px;">\${esc(item.authMethod || 'Authenticated')}</span>
                                     <strong style="margin-left: 8px; color: #fff;">\${esc(item.id)}</strong>
                                 </div>
                                 <div style="display: flex; align-items: center; gap: 12px;">
@@ -1083,7 +1214,6 @@ app.get('/', (req, res) => {
 </html>`);
 });
 
-// Friendly JSON errors (for example, when the request body is not valid JSON)
 app.use((err, req, res, next) => {
     if (err && err.type === 'entity.parse.failed') {
         return res.status(400).json({
