@@ -372,26 +372,26 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok', uptimeSeconds: Math.round(process.uptime()) });
 });
 
-// 3. Frontend UI (Clean, Secret-Free URLs & Masterpiece Design)
+// 3. Frontend UI (Enterprise Pro Edition)
 const PAGE = String.raw`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NexRelay · ServiceNow Integration Hub</title>
+<title>NexRelay · Enterprise ServiceNow Integration Hub</title>
 <style>
 :root{
-  --bg:#090e14;--surface:#111822;--surface-2:#162232;--border:#213147;--border-strong:#2e4463;
-  --text:#f0f6fc;--muted:#8b949e;--accent:#2ea043;--accent-hover:#2c974b;--accent-ink:#ffffff;--accent-soft:#112217;
-  --danger:#f85149;--danger-hover:#da3633;--danger-soft:#3d1418;--ok:#3fb950;--ok-soft:#112b18;
-  --warn:#d29922;--warn-soft:#332611;--info:#58a6ff;--info-soft:#112238;
-  --side:#060a0f;--side-text:#8b949e;--side-active:#162232;
-  --shadow:0 4px 12px rgba(0,0,0,0.4);
-  --shadow-lg:0 24px 56px rgba(0,0,0,0.6);
-  --blue:#58a6ff;--blue-bg:#112238;--blue-bd:#213f66;
-  --violet:#bc8cff;--violet-bg:#221b36;--violet-bd:#422e6b;
-  --amber:#d29922;--amber-bg:#332611;--amber-bd:#634b1a;
-  --green:#3fb950;--green-bg:#112b18;--green-bd:#23542c;
+  --bg:#030712;--surface:#0b1120;--surface-2:#111827;--border:#1f2937;--border-strong:#374151;
+  --text:#f9fafb;--muted:#9ca3af;--accent:#10b981;--accent-hover:#059669;--accent-ink:#ffffff;--accent-soft:#064e3b;
+  --danger:#ef4444;--danger-hover:#dc2626;--danger-soft:#7f1d1d;--ok:#10b981;--ok-soft:#064e3b;
+  --warn:#f59e0b;--warn-soft:#78350f;--info:#38bdf8;--info-soft:#0c4a6e;
+  --side:#020617;--side-text:#94a3b8;--side-active:#0f172a;
+  --shadow:0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+  --shadow-lg:0 25px 50px -12px rgba(0, 0, 0, 0.7);
+  --blue:#38bdf8;--blue-bg:#082f49;--blue-bd:#0369a1;
+  --violet:#a78bfa;--violet-bg:#2e1065;--violet-bd:#6d28d9;
+  --amber:#fbbf24;--amber-bg:#451a03;--amber-bd:#b45309;
+  --green:#34d399;--green-bg:#064e3b;--green-bd:#047857;
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   color-scheme:dark;
 }
@@ -403,58 +403,64 @@ button{font:inherit}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .icon{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
-.app{display:grid;grid-template-columns:260px minmax(0,1fr);min-height:100vh}
+.app{display:grid;grid-template-columns:268px minmax(0,1fr);min-height:100vh}
 .sidebar{background:var(--side);color:var(--side-text);display:flex;flex-direction:column;padding:24px 16px;position:sticky;top:0;height:100vh;border-right:1px solid var(--border)}
 .brand{display:flex;align-items:center;gap:12px;padding:4px 8px 28px}
-.brand-mark{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,#2ea043,#238636);display:grid;place-items:center;color:#fff;box-shadow:0 0 20px rgba(46,160,67,0.3)}
-.brand-mark .icon{width:20px;height:20px}
+.brand-mark{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#10b981,#059669);display:grid;place-items:center;color:#fff;box-shadow:0 0 25px rgba(16,185,129,0.35)}
+.brand-mark .icon{width:22px;height:22px}
 .brand strong{display:block;color:#fff;font-size:16px;letter-spacing:.3px}
 .brand span{font-size:12px;color:var(--muted)}
 .nav{display:flex;flex-direction:column;gap:6px}
 .nav-label{font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:0 12px 8px;color:var(--muted)}
 .nav-item{display:flex;align-items:center;gap:12px;width:100%;padding:11px 14px;border:0;border-radius:10px;background:transparent;color:var(--side-text);font-weight:500;text-align:left;cursor:pointer;transition:all .2s ease}
-.nav-item:hover{background:rgba(255,255,255,.04);color:#fff}
-.nav-item.active{background:var(--side-active);color:#fff;box-shadow:inset 3px 0 0 var(--accent)}
-.count{margin-left:auto;min-width:22px;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.1);color:#fff;font-size:11px;font-weight:600;text-align:center}
+.nav-item:hover{background:rgba(255,255,255,.05);color:#fff}
+.nav-item.active{background:var(--side-active);color:#fff;box-shadow:inset 3px 0 0 var(--accent);border:1px solid rgba(255,255,255,.04)}
+.count{margin-left:auto;min-width:24px;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.1);color:#fff;font-size:11px;font-weight:600;text-align:center}
 .side-foot{margin-top:auto;padding:16px 12px 0;border-top:1px solid var(--border);font-size:12px}
 .side-foot .lbl{text-transform:uppercase;letter-spacing:.8px;font-size:10px;color:var(--muted);margin-bottom:6px}
-.side-foot code{display:block;color:var(--text);font-family:var(--mono);margin-bottom:12px;background:var(--surface);padding:6px 8px;border-radius:6px;border:1px solid var(--border)}
+.side-foot code{display:block;color:var(--text);font-family:var(--mono);margin-bottom:12px;background:var(--surface);padding:8px 10px;border-radius:8px;border:1px solid var(--border);font-size:11px}
 .btn-side{width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);cursor:pointer;font-weight:500;transition:all .15s}
 .btn-side:hover{background:var(--surface-2);border-color:var(--accent)}
 
-.main{padding:32px 40px 64px;width:100%;max-width:1240px}
+.main{padding:32px 40px 64px;width:100%;max-width:1280px}
 .topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:28px}
-.topbar h1{margin:0;font-size:24px;font-weight:700;letter-spacing:-.3px}
-.topbar p{margin:6px 0 0;color:var(--muted)}
-.status{display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border:1px solid var(--border);border-radius:999px;background:var(--surface);font-size:12px;font-weight:600;white-space:nowrap;box-shadow:var(--shadow)}
+.topbar h1{margin:0;font-size:26px;font-weight:700;letter-spacing:-.4px}
+.topbar p{margin:6px 0 0;color:var(--muted);font-size:14px}
+.status{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border:1px solid var(--border);border-radius:999px;background:var(--surface);font-size:12px;font-weight:600;white-space:nowrap;box-shadow:var(--shadow)}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
 .status.ok .dot{background:var(--ok);box-shadow:0 0 0 4px var(--ok-soft)}
 .status.bad .dot{background:var(--danger);box-shadow:0 0 0 4px var(--danger-soft)}
 
+/* Metrics Telemetry Bar */
+.metrics-bar{display:grid;grid-template-columns:repeat(4, 1fr);gap:16px;margin-bottom:28px}
+.metric-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 20px;box-shadow:var(--shadow)}
+.metric-card .label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:6px}
+.metric-card .value{font-size:22px;font-weight:700;font-family:var(--mono);color:var(--text)}
+
 .panel{display:none}
 .panel.active{display:block;animation:fadeIn .25s ease}
 
-.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);margin-bottom:24px;overflow:hidden}
-.card-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 24px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.01)}
-.card-head h2{margin:0;font-size:16px;font-weight:650}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);margin-bottom:24px;overflow:hidden}
+.card-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 26px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.01)}
+.card-head h2{margin:0;font-size:17px;font-weight:650}
 .card-head p{margin:4px 0 0;color:var(--muted);font-size:13px}
-.card-body{padding:24px}
+.card-body{padding:26px}
 
-label{display:block;margin-bottom:8px;font-size:12px;font-weight:650;color:var(--muted);letter-spacing:.3px;text-transform:uppercase}
+label{display:block;margin-bottom:8px;font-size:11.5px;font-weight:700;color:var(--muted);letter-spacing:.5px;text-transform:uppercase}
 .field{margin-bottom:20px}
 .field:last-child{margin-bottom:0}
-input,select,textarea{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border-strong);border-radius:9px;padding:10px 14px;font:inherit;transition:border-color .15s,box-shadow .15s}
-textarea{font-family:var(--mono);font-size:13px;resize:vertical;min-height:150px}
+input,select,textarea{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border-strong);border-radius:10px;padding:11px 16px;font:inherit;transition:border-color .15s,box-shadow .15s}
+textarea{font-family:var(--mono);font-size:13px;resize:vertical;min-height:160px}
 input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);outline:none}
-.input-group{display:flex;align-items:stretch;border:1px solid var(--border-strong);border-radius:9px;background:var(--bg);overflow:hidden;transition:border-color .15s,box-shadow .15s}
+.input-group{display:flex;align-items:stretch;border:1px solid var(--border-strong);border-radius:10px;background:var(--bg);overflow:hidden;transition:border-color .15s,box-shadow .15s}
 .input-group:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
-.input-group input{border:0;background:transparent;border-radius:0;font-family:var(--mono);font-size:13px;padding:10px 14px}
+.input-group input{border:0;background:transparent;border-radius:0;font-family:var(--mono);font-size:13px;padding:11px 16px}
 .input-group input:focus-visible{outline:none}
-.icon-btn{display:inline-grid;place-items:center;width:42px;flex:none;border:0;border-left:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:all .15s}
+.icon-btn{display:inline-grid;place-items:center;width:44px;flex:none;border:0;border-left:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:all .15s}
 .icon-btn:hover{background:var(--accent-soft);color:var(--accent)}
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
 
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 18px;border-radius:9px;border:1px solid transparent;font-weight:600;cursor:pointer;white-space:nowrap;transition:all .15s}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:11px 20px;border-radius:10px;border:1px solid transparent;font-weight:600;cursor:pointer;white-space:nowrap;transition:all .15s}
 .btn-sm{padding:7px 14px;font-size:13px}
 .btn-primary{background:var(--accent);color:var(--accent-ink)}
 .btn-primary:hover{background:var(--accent-hover)}
@@ -463,16 +469,21 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 
 .btn-danger-ghost{background:transparent;color:var(--danger);border-color:var(--border-strong)}
 .btn-danger-ghost:hover{background:var(--danger-soft);border-color:var(--danger)}
 
-.seg{display:inline-flex;padding:4px;gap:4px;background:var(--bg);border:1px solid var(--border);border-radius:10px;margin-bottom:24px}
-.seg button{border:0;background:transparent;padding:7px 16px;border-radius:8px;font-weight:600;color:var(--muted);cursor:pointer;transition:all .15s}
+.seg{display:inline-flex;padding:4px;gap:4px;background:var(--bg);border:1px solid var(--border);border-radius:12px;margin-bottom:24px}
+.seg button{border:0;background:transparent;padding:8px 18px;border-radius:9px;font-weight:600;color:var(--muted);cursor:pointer;transition:all .15s}
 .seg button:hover{color:var(--text)}
 .seg button.active{background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
+
+/* Quick Templates Bar */
+.templates-bar{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap}
+.template-chip{background:var(--surface-2);border:1px solid var(--border-strong);color:var(--text);padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
+.template-chip:hover{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
 
 .url-bar{display:grid;grid-template-columns:130px minmax(0,1fr) auto;gap:12px;margin-bottom:24px}
 .url-bar select{font-weight:700}
 .url-bar input{font-family:var(--mono);font-size:13px}
-.header-row{display:grid;grid-template-columns:1fr 1fr 42px;gap:12px;margin-bottom:12px}
-.header-row .icon-btn{border:1px solid var(--border-strong);border-radius:9px}
+.header-row{display:grid;grid-template-columns:1fr 1fr 44px;gap:12px;margin-bottom:12px}
+.header-row .icon-btn{border:1px solid var(--border-strong);border-radius:10px}
 .hint{margin:12px 0 0;color:var(--muted);font-size:13px}
 .hint b{color:var(--text);font-weight:600}
 
@@ -494,19 +505,19 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 
 .toolbar .seg{margin:0}
 .spacer{flex:1}
 
-.log{background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);margin-bottom:16px;overflow:hidden}
-.log-head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:16px 20px}
+.log{background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);margin-bottom:16px;overflow:hidden}
+.log-head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:18px 24px}
 .log-title{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0}
 .log-id{font-family:var(--mono);font-size:13px;font-weight:600}
 .log-meta{color:var(--muted);font-size:12.5px}
 .log-actions{display:flex;align-items:center;gap:14px}
-.log-url{padding:0 20px 14px;font-family:var(--mono);font-size:12.5px;color:var(--muted);word-break:break-all}
+.log-url{padding:0 24px 14px;font-family:var(--mono);font-size:12.5px;color:var(--muted);word-break:break-all}
 .log details{border-top:1px solid var(--border)}
-.log summary{padding:12px 20px;cursor:pointer;color:var(--muted);font-size:13px;font-weight:500;user-select:none}
+.log summary{padding:14px 24px;cursor:pointer;color:var(--muted);font-size:13px;font-weight:500;user-select:none}
 .log summary:hover{color:var(--text)}
-.block{padding:0 20px 18px}
+.block{padding:0 24px 20px}
 .block-label{margin-bottom:8px;font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--muted)}
-pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);border-radius:10px;font:12.5px/1.6 var(--mono);overflow:auto;max-height:380px;white-space:pre-wrap;word-break:break-word}
+pre{margin:0;padding:18px;background:var(--bg);border:1px solid var(--border);border-radius:12px;font:13px/1.6 var(--mono);overflow:auto;max-height:400px;white-space:pre-wrap;word-break:break-word}
 .trunc{margin-top:8px;font-size:12.5px;color:var(--warn)}
 .badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:700;letter-spacing:.3px}
 .b-info{background:var(--info-soft);color:var(--info)}
@@ -514,7 +525,7 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
 .b-warn{background:var(--warn-soft);color:var(--warn)}
 .b-err{background:var(--danger-soft);color:var(--danger)}
 .b-neutral{background:var(--bg);color:var(--muted);border:1px solid var(--border)}
-.empty{display:grid;place-items:center;gap:10px;text-align:center;padding:64px 20px;border:1px dashed var(--border-strong);border-radius:14px;color:var(--muted);background:var(--surface)}
+.empty{display:grid;place-items:center;gap:10px;text-align:center;padding:64px 20px;border:1px dashed var(--border-strong);border-radius:16px;color:var(--muted);background:var(--surface)}
 .empty .icon{width:32px;height:32px}
 .empty strong{color:var(--text);font-size:15px}
 
@@ -522,8 +533,8 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
 .toast{min-width:260px;max-width:400px;padding:14px 18px;border-radius:12px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-left:4px solid var(--info);box-shadow:var(--shadow-lg);font-size:13.5px;animation:fadeIn .2s ease}
 .toast.success{border-left-color:var(--ok)}
 .toast.error{border-left-color:var(--danger)}
-.modal{position:fixed;inset:0;background:rgba(0,0,0,0.7);display:grid;place-items:center;padding:20px;z-index:80;backdrop-filter:blur(4px)}
-.dialog{width:100%;max-width:440px;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px;box-shadow:var(--shadow-lg)}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,0.75);display:grid;place-items:center;padding:20px;z-index:80;backdrop-filter:blur(6px)}
+.dialog{width:100%;max-width:440px;background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:30px;box-shadow:var(--shadow-lg)}
 .dialog h3{margin:0 0 10px;font-size:18px}
 .dialog p{margin:0 0 24px;color:var(--muted)}
 .dialog .actions{display:flex;justify-content:flex-end;gap:12px}
@@ -534,7 +545,7 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
   .brand{padding:0}.nav-label,.side-foot{display:none}
   .nav{flex-direction:row;flex-wrap:wrap}
   .main{padding:24px 16px 56px}
-  .grid-2,.url-bar{grid-template-columns:1fr}
+  .grid-2,.url-bar,.metrics-bar{grid-template-columns:1fr}
   .topbar{flex-direction:column}
 }
 @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
@@ -559,18 +570,18 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
   <aside class="sidebar">
     <div class="brand">
       <div class="brand-mark"><svg class="icon"><use href="#i-hex"/></svg></div>
-      <div><strong>NexRelay</strong><span>Integration Hub</span></div>
+      <div><strong>NexRelay</strong><span>Enterprise Hub</span></div>
     </div>
     <div class="nav-label">Workspace</div>
     <nav class="nav" aria-label="Primary">
-      <button type="button" class="nav-item active" data-panel="inbound"><svg class="icon"><use href="#i-in"/></svg>Inbound webhook</button>
-      <button type="button" class="nav-item" data-panel="outbound"><svg class="icon"><use href="#i-out"/></svg>Outbound client</button>
-      <button type="button" class="nav-item" data-panel="logs"><svg class="icon"><use href="#i-list"/></svg>Execution logs<span class="count" id="logCount">0</span></button>
+      <button type="button" class="nav-item active" data-panel="inbound"><svg class="icon"><use href="#i-in"/></svg>Inbound Webhook</button>
+      <button type="button" class="nav-item" data-panel="outbound"><svg class="icon"><use href="#i-out"/></svg>Outbound Client</button>
+      <button type="button" class="nav-item" data-panel="logs"><svg class="icon"><use href="#i-list"/></svg>Execution Logs<span class="count" id="logCount">0</span></button>
     </nav>
     <div class="side-foot">
       <div class="lbl">Workspace ID</div>
       <code id="deviceIdBadge">—</code>
-      <button type="button" class="btn-side" id="newSessionBtn">New workspace</button>
+      <button type="button" class="btn-side" id="newSessionBtn">New Workspace</button>
     </div>
   </aside>
 
@@ -580,13 +591,33 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
       <div class="status" id="statusPill"><span class="dot"></span><span id="statusText">Checking gateway…</span></div>
     </header>
 
+    <!-- Metrics Telemetry Bar -->
+    <div class="metrics-bar">
+      <div class="metric-card">
+        <div class="label">Total Requests</div>
+        <div class="value" id="metricTotal">0</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Success Rate</div>
+        <div class="value" id="metricSuccess">100%</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Avg Latency</div>
+        <div class="value" id="metricLatency">0 ms</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Active Sessions</div>
+        <div class="value" id="metricSession">Secure</div>
+      </div>
+    </div>
+
     <!-- Inbound -->
     <section id="panel-inbound" class="panel active">
       <div class="card">
-        <div class="card-head"><div><h2>Webhook Endpoint URL</h2><p>Send an HTTPS POST with a JSON body. Workspace URL is clean and secret-free.</p></div></div>
+        <div class="card-head"><div><h2>Secure Webhook Endpoint URL</h2><p>Pristine, secret-free URL route. Secrets are strictly handled via authorization headers.</p></div></div>
         <div class="card-body">
           <div class="field">
-            <label for="inboundUrlBox">Endpoint URL (Secure & Secret-Free)</label>
+            <label for="inboundUrlBox">Endpoint URL</label>
             <div class="input-group">
               <input type="text" id="inboundUrlBox" readonly spellcheck="false">
               <button type="button" class="icon-btn" data-copy="inboundUrlBox" data-label="Endpoint URL" title="Copy" aria-label="Copy endpoint URL"><svg class="icon"><use href="#i-copy"/></svg></button>
@@ -597,14 +628,14 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
 
       <div class="card">
         <div class="card-head">
-          <div><h2>Authentication Credentials</h2><p>Fresh keys are issued on every page load. Authentication headers keep your URLs clean and secure.</p></div>
-          <button type="button" class="btn btn-secondary btn-sm" id="rotateBtn"><svg class="icon"><use href="#i-refresh"/></svg>Rotate now</button>
+          <div><h2>Authentication Credentials</h2><p>Cryptographically secure tokens rotating on demand. Completely secret-free in URLs.</p></div>
+          <button type="button" class="btn btn-secondary btn-sm" id="rotateBtn"><svg class="icon"><use href="#i-refresh"/></svg>Rotate Credentials</button>
         </div>
         <div class="card-body">
           <div class="seg" role="tablist" aria-label="Authentication method">
-            <button type="button" class="active" data-tab-group="cred" data-tab-target="cred-bearer">Bearer token</button>
-            <button type="button" data-tab-group="cred" data-tab-target="cred-basic">Basic auth</button>
-            <button type="button" data-tab-group="cred" data-tab-target="cred-key">API key</button>
+            <button type="button" class="active" data-tab-group="cred" data-tab-target="cred-bearer">Bearer Token</button>
+            <button type="button" data-tab-group="cred" data-tab-target="cred-basic">Basic Auth</button>
+            <button type="button" data-tab-group="cred" data-tab-target="cred-key">API Key</button>
             <button type="button" data-tab-group="cred" data-tab-target="cred-oauth">OAuth 2.0</button>
           </div>
 
@@ -629,16 +660,16 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
               </div>
             </div>
             <div class="panel-actions">
-              <button type="button" class="btn btn-secondary btn-sm" data-copy-header><svg class="icon"><use href="#i-copy"/></svg>Copy header value</button>
+              <button type="button" class="btn btn-secondary btn-sm" data-copy-header><svg class="icon"><use href="#i-copy"/></svg>Copy Header Value</button>
             </div>
-            <p class="hint">In ServiceNow, add an HTTP header named <b>Authorization</b> with value <b>Bearer &lt;token&gt;</b>.</p>
+            <p class="hint">In ServiceNow REST Message, add an HTTP header named <b>Authorization</b> with value <b>Bearer &lt;token&gt;</b>.</p>
           </div>
 
           <!-- Basic -->
           <div class="tab-panel" data-panel-group="cred" id="cred-basic" hidden>
             <div class="grid-2">
               <div class="field">
-                <label for="basicUserBox">Username (permanent)</label>
+                <label for="basicUserBox">Username (Permanent)</label>
                 <div class="input-group">
                   <input type="text" id="basicUserBox" readonly spellcheck="false" placeholder="Issuing…">
                   <button type="button" class="icon-btn" data-copy="basicUserBox" data-label="Username" title="Copy" aria-label="Copy username"><svg class="icon"><use href="#i-copy"/></svg></button>
@@ -653,13 +684,13 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
                 </div>
               </div>
             </div>
-            <p class="hint">In ServiceNow, set the REST message Authentication type to <b>Basic</b>.</p>
+            <p class="hint">In ServiceNow, set the REST Message Authentication type to <b>Basic</b>.</p>
           </div>
 
           <!-- API Key -->
           <div class="tab-panel" data-panel-group="cred" id="cred-key" hidden>
             <div class="field">
-              <label for="apiKeyBox">API key</label>
+              <label for="apiKeyBox">API Key</label>
               <div class="input-group">
                 <input type="password" id="apiKeyBox" readonly autocomplete="new-password" spellcheck="false" placeholder="Issuing…">
                 <button type="button" class="icon-btn" data-reveal="apiKeyBox" title="Show / hide" aria-label="Show or hide API key"><svg class="icon"><use href="#i-eye"/></svg></button>
@@ -667,17 +698,17 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
               </div>
             </div>
 
-            <div class="opt-title">Header Authentication (Recommended & Secure)</div>
+            <div class="opt-title">Header Authentication (Secure & Recommended)</div>
             <div class="auth-row opt">
               <div class="field">
                 <label for="keyViaHeader">Delivery</label>
-                <input type="text" id="keyViaHeader" class="tag tag-amber" value="HTTP header" readonly aria-readonly="true">
+                <input type="text" id="keyViaHeader" class="tag tag-amber" value="HTTP Header" readonly aria-readonly="true">
               </div>
               <div class="field">
-                <label for="keyHeaderName">Header name</label>
+                <label for="keyHeaderName">Header Name</label>
                 <input type="text" id="keyHeaderName" class="tag tag-green" value="x-sn-apikey" readonly aria-readonly="true" spellcheck="false">
               </div>
-              <div class="note-cell">Pass key securely in header. URLs remain clean and secret-free.</div>
+              <div class="note-cell">Pass key securely in header. URLs remain completely clean.</div>
             </div>
             <p class="hint">In ServiceNow, add <b>x-sn-apikey</b> as an HTTP header on your REST message.</p>
           </div>
@@ -686,7 +717,7 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
           <div class="tab-panel" data-panel-group="cred" id="cred-oauth" hidden>
             <div class="auth-row two">
               <div class="field">
-                <label for="oauthGrant">Grant type</label>
+                <label for="oauthGrant">Grant Type</label>
                 <input type="text" id="oauthGrant" class="tag tag-violet" value="client_credentials" readonly aria-readonly="true" spellcheck="false">
               </div>
               <div class="field">
@@ -706,7 +737,7 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
                 </div>
               </div>
               <div class="field">
-                <label for="oauthSecretBox">Client secret</label>
+                <label for="oauthSecretBox">Client Secret</label>
                 <div class="input-group">
                   <input type="password" id="oauthSecretBox" readonly autocomplete="new-password" spellcheck="false" placeholder="Issuing…">
                   <button type="button" class="icon-btn" data-reveal="oauthSecretBox" title="Show / hide" aria-label="Show or hide client secret"><svg class="icon"><use href="#i-eye"/></svg></button>
@@ -714,7 +745,7 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
                 </div>
               </div>
             </div>
-            <p class="hint">In ServiceNow, set Authentication type to <b>OAuth 2.0</b>.</p>
+            <p class="hint">In ServiceNow, set Authentication type to <b>OAuth 2.0</b> pointing to this Token URL.</p>
           </div>
         </div>
       </div>
@@ -731,14 +762,25 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
     <!-- Outbound -->
     <section id="panel-outbound" class="panel">
       <div class="card">
-        <div class="card-head"><div><h2>Request Builder</h2><p>Run authenticated calls against your ServiceNow instance.</p></div></div>
+        <div class="card-head">
+          <div><h2>ServiceNow Request Builder</h2><p>Execute authenticated requests against your PDI or ServiceNow tables with built-in templates.</p></div>
+        </div>
         <div class="card-body">
+          <!-- Quick Templates Bar -->
+          <div class="templates-bar">
+            <span style="font-size: 11.5px; font-weight: 700; color: var(--muted); align-self: center; text-transform: uppercase;">Templates:</span>
+            <button type="button" class="template-chip" data-template="incident-post">+ Create Incident</button>
+            <button type="button" class="template-chip" data-template="incident-get">+ Query Incidents</button>
+            <button type="button" class="template-chip" data-template="user-get">+ Get Users</button>
+            <button type="button" class="template-chip" data-template="ping">+ Health Check</button>
+          </div>
+
           <div class="url-bar">
             <select id="httpMethod" aria-label="HTTP method">
               <option>GET</option><option selected>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option>
             </select>
             <input type="url" id="httpUrl" placeholder="https://dev12345.service-now.com/api/now/table/incident" spellcheck="false" aria-label="Request URL">
-            <button type="button" class="btn btn-primary" id="sendBtn"><svg class="icon"><use href="#i-send"/></svg>Send request</button>
+            <button type="button" class="btn btn-primary" id="sendBtn"><svg class="icon"><use href="#i-send"/></svg>Send Request (Ctrl+Enter)</button>
           </div>
 
           <div class="seg" role="tablist" aria-label="Request sections">
@@ -749,12 +791,12 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
 
           <div class="tab-panel" data-panel-group="pm" id="pm-auth">
             <div class="field">
-              <label for="authType">Auth type</label>
+              <label for="authType">Auth Type</label>
               <select id="authType">
-                <option value="basic">Basic auth</option>
-                <option value="bearer">Bearer token (OAuth 2.0)</option>
-                <option value="apikey">API key (custom header)</option>
-                <option value="none">No auth</option>
+                <option value="basic">Basic Auth</option>
+                <option value="bearer">Bearer Token (OAuth 2.0)</option>
+                <option value="apikey">API Key (Custom Header)</option>
+                <option value="none">No Auth</option>
               </select>
             </div>
             <div id="basicAuthFields" class="grid-2">
@@ -768,16 +810,16 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
               </div>
             </div>
             <div id="bearerAuthField" class="field" hidden>
-              <label for="bearerToken">Access token</label>
+              <label for="bearerToken">Access Token</label>
               <div class="input-group">
                 <input type="password" id="bearerToken" placeholder="Paste OAuth bearer token" autocomplete="new-password">
                 <button type="button" class="icon-btn" data-reveal="bearerToken" title="Show / hide" aria-label="Show or hide token"><svg class="icon"><use href="#i-eye"/></svg></button>
               </div>
             </div>
             <div id="apiKeyAuthFields" class="grid-2" hidden>
-              <div class="field"><label for="apiKeyHeaderName">Header name</label><input type="text" id="apiKeyHeaderName" value="x-sn-apikey" autocomplete="off"></div>
+              <div class="field"><label for="apiKeyHeaderName">Header Name</label><input type="text" id="apiKeyHeaderName" value="x-sn-apikey" autocomplete="off"></div>
               <div class="field">
-                <label for="apiKeyValue">API key</label>
+                <label for="apiKeyValue">API Key</label>
                 <div class="input-group">
                   <input type="password" id="apiKeyValue" placeholder="Paste API key" autocomplete="new-password">
                   <button type="button" class="icon-btn" data-reveal="apiKeyValue" title="Show / hide" aria-label="Show or hide key"><svg class="icon"><use href="#i-eye"/></svg></button>
@@ -789,13 +831,13 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
 
           <div class="tab-panel" data-panel-group="pm" id="pm-headers" hidden>
             <div id="headersList"></div>
-            <button type="button" class="btn btn-secondary btn-sm" id="addHeaderBtn">+ Add header</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="addHeaderBtn">+ Add Header</button>
           </div>
 
           <div class="tab-panel" data-panel-group="pm" id="pm-body" hidden>
-            <label for="httpBody">Raw JSON body</label>
+            <label for="httpBody">Raw JSON Body</label>
             <textarea id="httpBody" rows="8" spellcheck="false">{
-  "short_description": "Incident created via NexRelay Hub",
+  "short_description": "Elite automated incident created via NexRelay Hub",
   "urgency": "2",
   "impact": "2",
   "category": "software"
@@ -809,12 +851,12 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
     <section id="panel-logs" class="panel">
       <div class="toolbar">
         <div class="seg" role="tablist" aria-label="Filter logs" style="margin:0">
-          <button type="button" class="active" data-filter="all">All</button>
+          <button type="button" class="active" data-filter="all">All Traffic</button>
           <button type="button" data-filter="inbound">Inbound</button>
           <button type="button" data-filter="outbound">Outbound</button>
         </div>
         <div class="spacer"></div>
-        <button type="button" class="btn btn-danger-ghost btn-sm" id="clearAllBtn"><svg class="icon"><use href="#i-trash"/></svg>Delete all records</button>
+        <button type="button" class="btn btn-danger-ghost btn-sm" id="clearAllBtn"><svg class="icon"><use href="#i-trash"/></svg>Delete All Records</button>
       </div>
       <div id="logsList"></div>
     </section>
@@ -842,9 +884,9 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
   var DEVICE_RE = /^sn_dev_[a-f0-9]{48}$/;
   var MAX_RENDER_CHARS = 50000;
   var PAGES = {
-    inbound: ['Inbound Webhook', 'Receive ServiceNow payloads on a secured, secret-free workspace endpoint.'],
+    inbound: ['Inbound Webhook Hub', 'Receive ServiceNow payloads on a secured, secret-free workspace endpoint.'],
     outbound: ['Outbound HTTP Client', 'Send authenticated requests to your ServiceNow instance.'],
-    logs: ['Execution Logs', 'Audit trail of inbound and outbound traffic for this workspace.']
+    logs: ['Execution Logs & Audit', 'Real-time audit trail of inbound and outbound traffic for this workspace.']
   };
   var state = { deviceId: '', creds: null, credTab: 'cred-bearer', seen: {}, primed: false, inbound: [], outbound: [], filter: 'all', sending: false, sig: '', open: {} };
 
@@ -869,9 +911,7 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
     el.className = 'toast ' + (kind || 'info');
     el.textContent = msg;
     $('toasts').appendChild(el);
-    setTimeout(function () {
-      el.remove();
-    }, 3400);
+    setTimeout(function () { el.remove(); }, 3400);
   }
 
   var modalResolve = null;
@@ -923,9 +963,7 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
     if (!u) return;
     if (!btn.getAttribute('data-orig')) btn.setAttribute('data-orig', u.getAttribute('href').slice(1));
     swapIcon(btn, 'i-check');
-    setTimeout(function () {
-      swapIcon(btn, btn.getAttribute('data-orig'));
-    }, 1400);
+    setTimeout(function () { swapIcon(btn, btn.getAttribute('data-orig')); }, 1400);
   }
 
   function showPanel(name) {
@@ -976,7 +1014,7 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
     $('oauthIdBox').value = c.clientId;
     $('oauthSecretBox').value = c.clientSecret;
     if (c.allowedHosts && c.allowedHosts.length) {
-      $('hostHint').textContent = 'Requests are restricted to HTTPS hosts matching: ' + c.allowedHosts.join(', ') + '.';
+      $('hostHint').textContent = 'Requests restricted to HTTPS hosts matching: ' + c.allowedHosts.join(', ') + '.';
     }
     renderCurl();
   }
@@ -1029,6 +1067,21 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
     return (inb[0] ? inb[0].id : '') + '|' + (out[0] ? out[0].id : '') + '|' + inb.length + '|' + out.length;
   }
 
+  function updateMetrics() {
+    var all = state.outbound.concat(state.inbound);
+    var total = all.length;
+    $('metricTotal').textContent = total;
+
+    var successes = state.outbound.filter(function(o) { return o.statusCode >= 200 && o.statusCode < 300; }).length;
+    var outboundTotal = state.outbound.length;
+    var successRate = outboundTotal > 0 ? Math.round((successes / outboundTotal) * 100) : 100;
+    $('metricSuccess').textContent = successRate + '%';
+
+    var totalLatency = state.outbound.reduce(function(acc, o) { return acc + (o.durationMs || 0); }, 0);
+    var avgLatency = outboundTotal > 0 ? Math.round(totalLatency / outboundTotal) : 0;
+    $('metricLatency').textContent = avgLatency + ' ms';
+  }
+
   function loadLogs() {
     if (document.hidden || !state.deviceId) return;
     fetch(API + '/logs', { headers: { 'X-Device-Token': state.deviceId }, cache: 'no-store' })
@@ -1043,6 +1096,7 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
           d.inbound.concat(d.outbound).forEach(function (i) { state.seen[i.id] = true; });
         }
         renderLogs();
+        updateMetrics();
       }).catch(function () {});
   }
 
@@ -1077,7 +1131,7 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
       '<div class="log-head"><div class="log-title">' + head + '</div>' +
       '<div class="log-actions"><span class="log-meta">' + formatTime(item.timestamp) + '</span>' + delBtn + '</div></div>' +
       (inbound ? '' : '<div class="log-url">' + esc(item.url) + '</div>') +
-      (body ? '<details data-id="' + esc(item.id) + '"' + open + '><summary>' + (inbound ? 'Payload' : 'Request &amp; response') + '</summary>' + body + '</details>' : '') +
+      (body ? '<details data-id="' + esc(item.id) + '"' + open + '><summary>' + (inbound ? 'Payload' : 'Request &amp; Response') + '</summary>' + body + '</details>' : '') +
       '</article>';
   }
 
@@ -1106,7 +1160,7 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
 
   function deleteRecord(id) {
     confirmDialog({
-      title: 'Delete this record?',
+      title: 'Delete record?',
       message: 'Record ' + id + ' will be permanently removed from this workspace.',
       confirmLabel: 'Delete record', danger: true
     }).then(function (yes) {
@@ -1117,7 +1171,7 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
             state.inbound = state.inbound.filter(function (i) { return i.id !== id; });
             state.outbound = state.outbound.filter(function (i) { return i.id !== id; });
             delete state.open[id];
-            resetSignature(); renderLogs();
+            resetSignature(); renderLogs(); updateMetrics();
             toast('Record ' + id + ' deleted', 'success');
           }
         });
@@ -1137,7 +1191,7 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
         .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
         .then(function (d) {
           state.inbound = []; state.outbound = []; state.open = {};
-          resetSignature(); renderLogs();
+          resetSignature(); renderLogs(); updateMetrics();
           toast(d.deleted + ' records deleted', 'success');
         });
     });
@@ -1166,6 +1220,38 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
     $('httpBody').disabled = (m === 'GET' || m === 'DELETE');
   }
 
+  // Quick Action Templates for ServiceNow Developers
+  function loadTemplate(type) {
+    var urlInput = $('httpUrl');
+    var methodInput = $('httpMethod');
+    var bodyInput = $('httpBody');
+    
+    if (type === 'incident-post') {
+      methodInput.value = 'POST';
+      urlInput.value = 'https://dev_instance.service-now.com/api/now/table/incident';
+      bodyInput.value = JSON.stringify({
+        short_description: "Automated test incident from NexRelay Enterprise",
+        urgency: "2",
+        impact: "2",
+        category: "hardware"
+      }, null, 2);
+    } else if (type === 'incident-get') {
+      methodInput.value = 'GET';
+      urlInput.value = 'https://dev_instance.service-now.com/api/now/table/incident?sysparm_limit=5&sysparm_display_value=true';
+      bodyInput.value = '';
+    } else if (type === 'user-get') {
+      methodInput.value = 'GET';
+      urlInput.value = 'https://dev_instance.service-now.com/api/now/table/sys_user?sysparm_limit=10';
+      bodyInput.value = '';
+    } else if (type === 'ping') {
+      methodInput.value = 'GET';
+      urlInput.value = location.origin + '/health';
+      bodyInput.value = '';
+    }
+    updateBodyState();
+    toast('Template loaded successfully', 'success');
+  }
+
   function sendOutbound() {
     if (state.sending) return;
     var url = $('httpUrl').value.trim();
@@ -1183,7 +1269,7 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
     var parsed = null;
     if (['POST', 'PUT', 'PATCH'].indexOf(method) > -1 && rawBody.trim()) {
       try { parsed = JSON.parse(rawBody); }
-      catch (e) { toast('Invalid JSON body', 'error'); return; }
+      catch (e) { toast('Invalid JSON body syntax', 'error'); return; }
     }
 
     state.sending = true;
@@ -1205,7 +1291,7 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
     }).then(function (r) {
       if (r.ok && r.data.record) {
         state.outbound.unshift(r.data.record);
-        resetSignature(); renderLogs();
+        resetSignature(); renderLogs(); updateMetrics();
         var rec = r.data.record;
         toast(rec.method + ' completed: ' + rec.status, rec.statusCode >= 200 && rec.statusCode < 300 ? 'success' : 'error');
         showPanel('logs');
@@ -1236,6 +1322,10 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
     var t = e.target;
     var el;
 
+    if ((el = t.closest('[data-template]'))) {
+      loadTemplate(el.getAttribute('data-template'));
+      return;
+    }
     if ((el = t.closest('[data-copy-header]'))) {
       if (!state.creds) { toast('Credentials still issuing', 'error'); return; }
       copyText('Bearer ' + state.creds.bearer, 'Authorization header value', el);
@@ -1271,6 +1361,17 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
     if (d && d.matches && d.matches('details[data-id]')) state.open[d.getAttribute('data-id')] = d.open;
   }, true);
 
+  // Keyboard shortcuts (Ctrl + Enter to send request)
+  document.addEventListener('keydown', function(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      var outboundPanel = $('panel-outbound');
+      if (outboundPanel.classList.contains('active')) {
+        e.preventDefault();
+        sendOutbound();
+      }
+    }
+  });
+
   $('modalConfirm').addEventListener('click', function () { closeModal(true); });
   $('modalCancel').addEventListener('click', function () { closeModal(false); });
 
@@ -1291,7 +1392,7 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
       state.deviceId = 'sn_dev_' + hex(24);
       try { localStorage.setItem('nex_device_token', state.deviceId); } catch (e) {}
       state.creds = null; state.inbound = []; state.outbound = []; state.open = {}; state.sig = '';
-      renderCredentials(); renderLogs();
+      renderCredentials(); renderLogs(); updateMetrics();
       rotateCredentials(false).then(function () { toast('New workspace created', 'success'); });
     });
   });
@@ -1303,6 +1404,7 @@ pre{margin:0;padding:16px;background:var(--bg);border:1px solid var(--border);bo
   showPanel('inbound');
   renderCredentials();
   renderLogs();
+  updateMetrics();
   rotateCredentials(false);
   loadLogs();
   checkHealth();
@@ -1330,5 +1432,5 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`NexRelay ServiceNow Integration Hub running on port ${PORT}`);
+    console.log(`NexRelay Enterprise Edition running on port ${PORT}`);
 });
