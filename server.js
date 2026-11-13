@@ -7,9 +7,8 @@ const app = express();
 app.disable('x-powered-by');
 const PORT = process.env.PORT || 3000;
 
-// ---- Settings ----
+// ---- Configuration ----
 const MAX_LOGS = 200;
-const MAX_DEVICES = 500;
 const BASIC_USERNAME = process.env.BASIC_USERNAME || 'nexrelay_admin';
 const INBOUND_TOKEN = process.env.INBOUND_TOKEN || '';
 const ALLOWED_HOSTS = (process.env.ALLOWED_HOSTS || '.service-now.com')
@@ -17,8 +16,6 @@ const ALLOWED_HOSTS = (process.env.ALLOWED_HOSTS || '.service-now.com')
 const OUTBOUND_TIMEOUT_MS = 30000;
 const OAUTH_TOKEN_TTL_S = Number(process.env.OAUTH_TOKEN_TTL_S) || 3600;
 const OAUTH_MAX_TOKENS = 20;
-const DEVICE_ID_RE = /^sn_dev_[a-f0-9]{48}$/;
-const GLOBAL_ID = 'default_global';
 
 app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -33,23 +30,9 @@ app.use(cors());
 app.use(bodyParser.json({ limit: '1mb' }));
 app.use(bodyParser.urlencoded({ extended: false, limit: '20kb' }));
 
-// ---- Stores ----
-const deviceStores = new Map();
-const sessions = new Map();
-
-function evict(map) {
-    while (map.size > MAX_DEVICES) map.delete(map.keys().next().value);
-}
-
-function getStore(deviceId) {
-    const id = DEVICE_ID_RE.test(deviceId || '') ? deviceId : GLOBAL_ID;
-    let store = deviceStores.get(id);
-    if (!store) store = { inbound: [], outbound: [] };
-    deviceStores.delete(id);
-    deviceStores.set(id, store);
-    evict(deviceStores);
-    return store;
-}
+// ---- Global State Store ----
+const globalStore = { inbound: [], outbound: [] };
+let activeSession = null;
 
 function addLog(list, entry) {
     list.unshift(entry);
@@ -72,12 +55,35 @@ function isAllowedUrl(rawUrl) {
     } catch { return false; }
 }
 
-// ---- Credential helpers ----
+// ---- Cryptographic Credentials Engine ----
 const digest = v => crypto.createHash('sha256').update(String(v)).digest();
 const matches = (candidate, storedDigest) => crypto.timingSafeEqual(digest(candidate), storedDigest);
 const randomSecret = (prefix, bytes) => prefix + crypto.randomBytes(bytes).toString('hex');
 const newSyncId = prefix => prefix + crypto.randomInt(100000, 1000000);
 const sameText = (a, b) => crypto.timingSafeEqual(digest(a), digest(b));
+
+function issueGlobalCredentials() {
+    const creds = {
+        username: BASIC_USERNAME,
+        clientId: 'nexrelay_' + crypto.randomBytes(6).toString('hex'),
+        password: randomSecret('sn_pass_', 16),
+        apiKey: randomSecret('sn_key_', 20),
+        bearer: randomSecret('sn_nex_', 24),
+        clientSecret: randomSecret('sn_sec_', 24)
+    };
+    activeSession = {
+        raw: creds,
+        bearer: digest(creds.bearer),
+        apiKey: digest(creds.apiKey),
+        password: digest(creds.password),
+        clientId: digest(creds.clientId),
+        clientSecret: digest(creds.clientSecret),
+        tokens: []
+    };
+    return creds;
+}
+
+issueGlobalCredentials();
 
 function hasValidOAuthToken(session, candidate) {
     const now = Date.now();
@@ -89,17 +95,17 @@ function hasValidOAuthToken(session, candidate) {
     return ok;
 }
 
-function authenticateInbound(req, session) {
+function authenticateInbound(req) {
     const auth = req.headers['authorization'] || '';
     const headerKey = req.headers['x-sn-apikey'] || req.headers['x-api-key'] || '';
 
     if (INBOUND_TOKEN && auth === 'Bearer ' + INBOUND_TOKEN) return 'Static Bearer Token';
-    if (!session) return null;
+    if (!activeSession) return null;
 
     if (auth.startsWith('Bearer ')) {
         const candidate = auth.slice(7).trim();
-        if (candidate && matches(candidate, session.bearer)) return 'Bearer Token';
-        if (candidate && hasValidOAuthToken(session, candidate)) return 'OAuth 2.0 (Client Credentials)';
+        if (candidate && matches(candidate, activeSession.bearer)) return 'Bearer Token';
+        if (candidate && hasValidOAuthToken(activeSession, candidate)) return 'OAuth 2.0 (Client Credentials)';
     }
     if (auth.startsWith('Basic ')) {
         const decoded = Buffer.from(auth.slice(6).trim(), 'base64').toString('utf8');
@@ -107,62 +113,31 @@ function authenticateInbound(req, session) {
         if (idx > -1) {
             const user = decoded.slice(0, idx);
             const pass = decoded.slice(idx + 1);
-            if (sameText(user, BASIC_USERNAME) && matches(pass, session.password)) return 'Basic Auth';
+            if (sameText(user, BASIC_USERNAME) && matches(pass, activeSession.password)) return 'Basic Auth';
         }
     }
-    if (headerKey && matches(headerKey, session.apiKey)) return 'API Key (Header)';
+    if (headerKey && matches(headerKey, activeSession.apiKey)) return 'API Key (Header)';
     return null;
 }
 
-function deviceFrom(req, res) {
-    const id = String(req.headers['x-device-token'] || '').trim();
-    if (!DEVICE_ID_RE.test(id)) {
-        res.status(400).json({ status: 'Error', message: 'Missing or invalid X-Device-Token header.' });
-        return null;
-    }
-    return id;
-}
+// ---- API Routes ----
+app.get('/api/servicenow/credentials', (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json({ ...activeSession.raw, tokenTtlSeconds: OAUTH_TOKEN_TTL_S, allowedHosts: ALLOWED_HOSTS });
+});
 
-// 0. Credential Issuing Endpoint
-app.post('/api/v1/servicenow/session', (req, res) => {
-    const deviceId = String((req.body && req.body.deviceId) || '');
-    if (!DEVICE_ID_RE.test(deviceId)) {
-        return res.status(400).json({ status: 'Error', message: 'Invalid deviceId.' });
-    }
-    const creds = {
-        username: BASIC_USERNAME,
-        clientId: 'nexrelay_' + deviceId.slice(7, 19),
-        password: randomSecret('sn_pass_', 16),
-        apiKey: randomSecret('sn_key_', 20),
-        bearer: randomSecret('sn_nex_', 24),
-        clientSecret: randomSecret('sn_sec_', 24)
-    };
-    sessions.delete(deviceId);
-    sessions.set(deviceId, {
-        bearer: digest(creds.bearer),
-        apiKey: digest(creds.apiKey),
-        password: digest(creds.password),
-        clientId: digest(creds.clientId),
-        clientSecret: digest(creds.clientSecret),
-        tokens: []
-    });
-    evict(sessions);
+app.post('/api/servicenow/credentials/rotate', (req, res) => {
+    const creds = issueGlobalCredentials();
     res.set('Cache-Control', 'no-store');
     res.json({ ...creds, tokenTtlSeconds: OAUTH_TOKEN_TTL_S, allowedHosts: ALLOWED_HOSTS });
 });
 
-// 0b. OAuth 2.0 Token Endpoint
-app.post('/api/v1/servicenow/oauth/token/:deviceToken', (req, res) => {
+app.post('/api/servicenow/oauth/token', (req, res) => {
     res.set({ 'Cache-Control': 'no-store', Pragma: 'no-cache' });
-    const id = String(req.params.deviceToken || '');
-    const session = DEVICE_ID_RE.test(id) ? sessions.get(id) : null;
     const body = req.body || {};
 
     if (body.grant_type !== 'client_credentials') {
-        return res.status(400).json({
-            error: 'unsupported_grant_type',
-            error_description: 'Only the client_credentials grant is supported.'
-        });
+        return res.status(400).json({ error: 'unsupported_grant_type', error_description: 'Only client_credentials grant is supported.' });
     }
 
     let clientId = typeof body.client_id === 'string' ? body.client_id : '';
@@ -174,15 +149,15 @@ app.post('/api/v1/servicenow/oauth/token/:deviceToken', (req, res) => {
         if (idx > -1) { clientId = decoded.slice(0, idx); clientSecret = decoded.slice(idx + 1); }
     }
 
-    const valid = session && clientId && clientSecret &&
-        matches(clientId, session.clientId) && matches(clientSecret, session.clientSecret);
+    const valid = activeSession && clientId && clientSecret &&
+        matches(clientId, activeSession.clientId) && matches(clientSecret, activeSession.clientSecret);
     if (!valid) {
         res.set('WWW-Authenticate', 'Basic realm="NexRelay OAuth"');
         return res.status(401).json({ error: 'invalid_client', error_description: 'Unknown client or wrong secret.' });
     }
 
     const accessToken = randomSecret('sn_oat_', 24);
-    session.tokens = session.tokens
+    activeSession.tokens = activeSession.tokens
         .filter(t => t.exp > Date.now())
         .concat({ digest: digest(accessToken), exp: Date.now() + OAUTH_TOKEN_TTL_S * 1000 })
         .slice(-OAUTH_MAX_TOKENS);
@@ -190,15 +165,9 @@ app.post('/api/v1/servicenow/oauth/token/:deviceToken', (req, res) => {
     res.json({ access_token: accessToken, token_type: 'Bearer', expires_in: OAUTH_TOKEN_TTL_S });
 });
 
-// 1. ServiceNow Inbound Webhook Endpoint
-app.post(['/api/v1/servicenow/inbound/:deviceToken', '/api/v1/servicenow/inbound'], (req, res) => {
-    const requested = String(req.params.deviceToken || req.headers['x-device-token'] || '').trim();
-    if (requested && !DEVICE_ID_RE.test(requested)) {
-        return res.status(400).json({ status: 'Error', message: 'Invalid device token in URL or X-Device-Token header.' });
-    }
-
-    const session = requested ? sessions.get(requested) : null;
-    const authMethod = authenticateInbound(req, session);
+// Clean Inbound Webhook Endpoint
+app.post('/api/servicenow/inbound', (req, res) => {
+    const authMethod = authenticateInbound(req);
     if (!authMethod) {
         res.set('WWW-Authenticate', 'Bearer realm="NexRelay"');
         return res.status(401).json({
@@ -207,7 +176,6 @@ app.post(['/api/v1/servicenow/inbound/:deviceToken', '/api/v1/servicenow/inbound
         });
     }
 
-    const store = getStore(requested);
     const syncId = newSyncId('SN-INB-');
     const inboundEntry = {
         id: syncId,
@@ -218,66 +186,39 @@ app.post(['/api/v1/servicenow/inbound/:deviceToken', '/api/v1/servicenow/inbound
         payload: req.body
     };
 
-    addLog(store.inbound, inboundEntry);
-    res.status(200).json({
-        status: 'Success',
-        message: 'Inbound ServiceNow payload successfully ingested.',
-        record: inboundEntry
-    });
+    addLog(globalStore.inbound, inboundEntry);
+    res.status(200).json({ status: 'Success', message: 'Inbound ServiceNow payload successfully ingested.', record: inboundEntry });
 });
 
-// 2. Outbound HTTP Proxy Endpoint
-app.post('/api/v1/servicenow/outbound', async (req, res) => {
-    const deviceId = deviceFrom(req, res);
-    if (!deviceId) return;
-    const store = getStore(deviceId);
-
+// Outbound Proxy
+app.post('/api/servicenow/outbound', async (req, res) => {
     const { method, url, authType, basicUser, basicPass, bearerToken, apiKeyHeaderName, apiKeyValue, headers, body } = req.body || {};
 
     if (!url || !method) {
-        return res.status(400).json({
-            status: 'Error',
-            message: 'Validation Error: Both HTTP Method and Target Endpoint URL are required.'
-        });
+        return res.status(400).json({ status: 'Error', message: 'Validation Error: Method and URL are required.' });
     }
-
     if (!isAllowedUrl(url)) {
-        return res.status(400).json({
-            status: 'Error',
-            message: 'Blocked: only https URLs on these hosts are allowed: ' + ALLOWED_HOSTS.join(', ') + '.'
-        });
+        return res.status(400).json({ status: 'Error', message: 'Blocked: only https URLs on allowed hosts are permitted.' });
     }
 
     const syncId = newSyncId('SN-OUT-');
     const timestamp = new Date().toISOString();
     const startTime = Date.now();
 
-    const requestHeaders = {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-    };
-
+    const requestHeaders = { 'Accept': 'application/json', 'Content-Type': 'application/json' };
     if (headers && typeof headers === 'object') {
-        Object.entries(headers).forEach(([k, v]) => {
-            if (k && k.trim()) requestHeaders[k.trim()] = v;
-        });
+        Object.entries(headers).forEach(([k, v]) => { if (k && k.trim()) requestHeaders[k.trim()] = v; });
     }
 
     if (authType === 'basic' && basicUser) {
-        const combined = `${basicUser}:${basicPass || ''}`;
-        requestHeaders['Authorization'] = 'Basic ' + Buffer.from(combined).toString('base64');
+        requestHeaders['Authorization'] = 'Basic ' + Buffer.from(`${basicUser}:${basicPass || ''}`).toString('base64');
     } else if (authType === 'bearer' && bearerToken) {
         requestHeaders['Authorization'] = `Bearer ${bearerToken}`;
     } else if (authType === 'apikey' && apiKeyValue) {
-        const headerName = (apiKeyHeaderName && apiKeyHeaderName.trim()) ? apiKeyHeaderName.trim() : 'x-sn-apikey';
-        requestHeaders[headerName] = apiKeyValue;
+        requestHeaders[(apiKeyHeaderName && apiKeyHeaderName.trim()) ? apiKeyHeaderName.trim() : 'x-sn-apikey'] = apiKeyValue;
     }
 
-    const fetchOptions = {
-        method: String(method).toUpperCase(),
-        headers: requestHeaders
-    };
-
+    const fetchOptions = { method: String(method).toUpperCase(), headers: requestHeaders };
     if (['POST', 'PUT', 'PATCH'].includes(fetchOptions.method) && body) {
         fetchOptions.body = typeof body === 'string' ? body : JSON.stringify(body);
     }
@@ -289,30 +230,18 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
     let diagnosticError = null;
 
     try {
-        const response = await fetch(url, {
-            ...fetchOptions,
-            redirect: 'manual',
-            signal: AbortSignal.timeout(OUTBOUND_TIMEOUT_MS)
-        });
+        const response = await fetch(url, { ...fetchOptions, redirect: 'manual', signal: AbortSignal.timeout(OUTBOUND_TIMEOUT_MS) });
         durationMs = Date.now() - startTime;
         responseStatus = response.status;
         statusText = response.statusText;
-
         const rawText = await response.text();
-        try {
-            responseData = JSON.parse(rawText);
-        } catch {
-            responseData = rawText || { message: 'Response body returned empty or non-JSON format.' };
-        }
+        try { responseData = JSON.parse(rawText); } catch { responseData = rawText || { message: 'Empty response body.' }; }
     } catch (error) {
         durationMs = Date.now() - startTime;
         responseStatus = 503;
-        statusText = error.name === 'TimeoutError' ? 'Request Timed Out' : 'Network DNS or TLS Failure';
+        statusText = error.name === 'TimeoutError' ? 'Request Timed Out' : 'Network Failure';
         diagnosticError = error.message;
-        responseData = {
-            error: error.message,
-            diagnosticAdvice: 'Verify that your ServiceNow instance is online and reachable.'
-        };
+        responseData = { error: error.message, diagnosticAdvice: 'Verify ServiceNow instance connectivity.' };
     }
 
     const outboundEntry = {
@@ -329,41 +258,29 @@ app.post('/api/v1/servicenow/outbound', async (req, res) => {
         responsePayload: responseData
     };
 
-    addLog(store.outbound, outboundEntry);
+    addLog(globalStore.outbound, outboundEntry);
     res.status(200).json({ status: 'Completed', record: outboundEntry });
 });
 
-// 2b. Device-scoped log endpoints
-app.get('/api/v1/servicenow/logs', (req, res) => {
-    const deviceId = deviceFrom(req, res);
-    if (!deviceId) return;
-    const store = getStore(deviceId);
+app.get('/api/servicenow/logs', (req, res) => {
     res.set('Cache-Control', 'no-store');
-    res.json({ inbound: store.inbound, outbound: store.outbound });
+    res.json({ inbound: globalStore.inbound, outbound: globalStore.outbound });
 });
 
-app.delete('/api/v1/servicenow/logs', (req, res) => {
-    const deviceId = deviceFrom(req, res);
-    if (!deviceId) return;
-    const store = getStore(deviceId);
-    const deleted = store.inbound.length + store.outbound.length;
-    store.inbound = [];
-    store.outbound = [];
+app.delete('/api/servicenow/logs', (req, res) => {
+    const deleted = globalStore.inbound.length + globalStore.outbound.length;
+    globalStore.inbound = [];
+    globalStore.outbound = [];
     res.json({ status: 'Cleared', deleted });
 });
 
-app.delete('/api/v1/servicenow/logs/:id', (req, res) => {
-    const deviceId = deviceFrom(req, res);
-    if (!deviceId) return;
-    const store = getStore(deviceId);
+app.delete('/api/servicenow/logs/:id', (req, res) => {
     const targetId = req.params.id;
-
-    const before = store.inbound.length + store.outbound.length;
-    store.inbound = store.inbound.filter(item => item.id !== targetId);
-    store.outbound = store.outbound.filter(item => item.id !== targetId);
-
-    if (store.inbound.length + store.outbound.length === before) {
-        return res.status(404).json({ status: 'Error', message: 'Record not found in this device session.' });
+    const before = globalStore.inbound.length + globalStore.outbound.length;
+    globalStore.inbound = globalStore.inbound.filter(item => item.id !== targetId);
+    globalStore.outbound = globalStore.outbound.filter(item => item.id !== targetId);
+    if (globalStore.inbound.length + globalStore.outbound.length === before) {
+        return res.status(404).json({ status: 'Error', message: 'Record not found.' });
     }
     res.json({ status: 'Success', message: `Record ${targetId} deleted.`, deleted: 1 });
 });
@@ -372,150 +289,145 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok', uptimeSeconds: Math.round(process.uptime()) });
 });
 
-// 3. Frontend UI (Cinematic Cyberpunk Edition with History API URL routing & heavy animations)
+// ---- Stunning Animated Frontend UI (Matrix Edition) ----
 const PAGE = String.raw`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NexRelay · Cinematic Command Center</title>
+<title>NexRelay · Matrix Command Center</title>
 <style>
 :root{
-  --bg:#02040a;--surface:#070d19;--surface-2:#0f172a;--border:#1e293b;--border-strong:#334155;
-  --text:#f8fafc;--muted:#94a3b8;--accent:#10b981;--accent-hover:#059669;--accent-ink:#ffffff;--accent-soft:rgba(16,185,129,0.15);
-  --danger:#ef4444;--danger-hover:#dc2626;--danger-soft:rgba(239,68,68,0.15);--ok:#10b981;--ok-soft:rgba(16,185,129,0.15);
-  --warn:#f59e0b;--warn-soft:rgba(245,158,11,0.15);--info:#38bdf8;--info-soft:rgba(56,189,248,0.15);
-  --side:#010206;--side-text:#94a3b8;--side-active:#0b1329;
-  --shadow:0 20px 40px -15px rgba(0,0,0,0.7), 0 0 20px rgba(16,185,129,0.08);
-  --shadow-lg:0 35px 60px -15px rgba(0,0,0,0.9), 0 0 35px rgba(16,185,129,0.15);
-  --blue:#38bdf8;--violet:#a78bfa;--amber:#fbbf24;--green:#34d399;
+  --bg:#010409;--surface:#0d1117;--surface-2:#161b22;--border:#30363d;--border-strong:#484f58;
+  --text:#f0f6fc;--muted:#8b949e;--accent:#2ea043;--accent-hover:#238636;--accent-ink:#ffffff;--accent-soft:rgba(46,160,67,0.15);
+  --danger:#f85149;--danger-soft:rgba(248,81,73,0.15);--ok:#3fb950;--ok-soft:rgba(63,185,80,0.15);
+  --warn:#d29922;--warn-soft:rgba(210,153,34,0.15);--info:#58a6ff;--info-soft:rgba(88,166,255,0.15);
+  --side:#010409;--side-active:#1f6feb26;
+  --shadow:0 16px 32px rgba(1,4,9,0.8), 0 0 20px rgba(46,160,67,0.1);
+  --shadow-lg:0 24px 64px rgba(1,4,9,0.95), 0 0 40px rgba(46,160,67,0.2);
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   color-scheme:dark;
 }
 *{box-sizing:border-box}
-html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
 
-/* Cyberpunk Animated Grid Background */
+/* Animated Cyber Matrix Background Glow */
 body::before{
   content:'';position:fixed;inset:0;z-index:-1;
-  background-image:linear-gradient(to right, rgba(30,41,59,0.25) 1px, transparent 1px),
-                   linear-gradient(to bottom, rgba(30,41,59,0.25) 1px, transparent 1px);
-  background-size:40px 40px;
-  animation:gridScroll 30s linear infinite;
+  background: radial-gradient(circle at 15% 15%, rgba(46,160,67,0.08) 0%, transparent 40%),
+              radial-gradient(circle at 85% 85%, rgba(88,166,255,0.08) 0%, transparent 40%),
+              linear-gradient(to right, rgba(48,54,61,0.15) 1px, transparent 1px),
+              linear-gradient(to bottom, rgba(48,54,61,0.15) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 50px 50px, 50px 50px;
+  animation: bgPulse 8s ease-in-out infinite alternate;
 }
-@keyframes gridScroll{0%{background-position:0 0}100%{background-position:40px 40px}}
+@keyframes bgPulse{0%{opacity:0.8}100%{opacity:1}}
 
 [hidden]{display:none!important}
 button{font:inherit}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .icon{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
-.app{display:grid;grid-template-columns:278px minmax(0,1fr);min-height:100vh;animation:appEntrance 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards}
-@keyframes appEntrance{from{opacity:0;transform:scale(0.98) translateY(12px)}to{opacity:1;transform:none}}
+.app{display:grid;grid-template-columns:280px minmax(0,1fr);min-height:100vh;animation: appEntrance 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards}
+@keyframes appEntrance{from{opacity:0;transform:translateY(15px) scale(0.99)}to{opacity:1;transform:none}}
 
-.sidebar{background:var(--side);color:var(--side-text);display:flex;flex-direction:column;padding:28px 18px;position:sticky;top:0;height:100vh;border-right:1px solid var(--border);backdrop-filter:blur(12px)}
-.brand{display:flex;align-items:center;gap:12px;padding:4px 8px 32px}
-.brand-mark{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg,#10b981,#3b82f6);display:grid;place-items:center;color:#fff;box-shadow:0 0 30px rgba(16,185,129,0.4);animation:pulseGlow 3s ease-in-out infinite}
-@keyframes pulseGlow{0%,100%{box-shadow:0 0 20px rgba(16,185,129,0.3)}50%{box-shadow:0 0 35px rgba(56,189,248,0.5)}}
-.brand-mark .icon{width:22px;height:22px}
-.brand strong{display:block;color:#fff;font-size:17px;letter-spacing:.4px}
-.brand span{font-size:12px;color:var(--muted);background:linear-gradient(90deg,#38bdf8,#34d399);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:700}
+.sidebar{background:var(--side);color:var(--muted);display:flex;flex-direction:column;padding:30px 20px;position:sticky;top:0;height:100vh;border-right:1px solid var(--border);backdrop-filter:blur(16px)}
+.brand{display:flex;align-items:center;gap:14px;padding:4px 8px 36px}
+.brand-mark{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#2ea043,#1f6feb);display:grid;place-items:center;color:#fff;box-shadow:0 0 25px rgba(46,160,67,0.4);animation: iconFloat 4s ease-in-out infinite}
+@keyframes iconFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+.brand-mark .icon{width:24px;height:24px}
+.brand strong{display:block;color:#fff;font-size:18px;letter-spacing:0.3px}
+.brand span{font-size:11.5px;color:var(--ok);font-weight:700;text-transform:uppercase;letter-spacing:1px}
 
 .nav{display:flex;flex-direction:column;gap:8px}
-.nav-label{font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;padding:0 12px 10px;color:var(--muted)}
-.nav-item{display:flex;align-items:center;gap:12px;width:100%;padding:13px 16px;border:0;border-radius:12px;background:transparent;color:var(--side-text);font-weight:600;text-align:left;cursor:pointer;transition:all 0.25s cubic-bezier(0.4, 0, 0.2, 1);position:relative;overflow:hidden}
-.nav-item::before{content:'';position:absolute;inset:0;background:linear-gradient(90deg, rgba(16,185,129,0.1), transparent);opacity:0;transition:opacity 0.25s}
+.nav-label{font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;padding:0 12px 10px;color:var(--muted)}
+.nav-item{display:flex;align-items:center;gap:12px;width:100%;padding:13px 16px;border:0;border-radius:12px;background:transparent;color:var(--muted);font-weight:600;text-align:left;cursor:pointer;transition:all 0.25s cubic-bezier(0.4, 0, 0.2, 1);position:relative;overflow:hidden}
 .nav-item:hover{background:rgba(255,255,255,0.04);color:#fff;transform:translateX(4px)}
-.nav-item:hover::before{opacity:1}
-.nav-item.active{background:var(--side-active);color:#fff;box-shadow:inset 3px 0 0 var(--accent), 0 4px 20px rgba(0,0,0,0.4);border:1px solid rgba(16,185,129,0.2)}
-.count{margin-left:auto;min-width:26px;padding:3px 9px;border-radius:999px;background:rgba(16,185,129,0.2);color:var(--green);font-size:11px;font-weight:700;text-align:center;box-shadow:0 0 10px rgba(16,185,129,0.2)}
+.nav-item.active{background:var(--surface-2);color:#fff;box-shadow:inset 3px 0 0 var(--accent);border:1px solid var(--border)}
+.count{margin-left:auto;min-width:26px;padding:3px 8px;border-radius:999px;background:var(--ok-soft);color:var(--ok);font-size:11px;font-weight:700;text-align:center}
 
-.side-foot{margin-top:auto;padding:18px 14px 0;border-top:1px solid var(--border);font-size:12px}
-.side-foot .lbl{text-transform:uppercase;letter-spacing:1px;font-size:10px;color:var(--muted);margin-bottom:8px}
-.side-foot code{display:block;color:var(--text);font-family:var(--mono);margin-bottom:14px;background:var(--surface);padding:9px 12px;border-radius:10px;border:1px solid var(--border);font-size:11px;box-shadow:inset 0 2px 4px rgba(0,0,0,0.5)}
-.btn-side{width:100%;padding:11px 14px;border-radius:10px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);cursor:pointer;font-weight:600;transition:all 0.2s cubic-bezier(0.4, 0, 0.2, 1)}
-.btn-side:hover{background:var(--surface-2);border-color:var(--accent);box-shadow:0 0 15px rgba(16,185,129,0.3);transform:translateY(-1px)}
+.side-foot{margin-top:auto;padding:20px 14px 0;border-top:1px solid var(--border);font-size:12px;color:var(--muted)}
+.side-foot .lbl{text-transform:uppercase;letter-spacing:1px;font-size:10.5px;color:var(--ok);font-weight:800;margin-bottom:6px}
 
-.main{padding:36px 44px 72px;width:100%;max-width:1320px;animation:mainSlide 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards}
+.main{padding:36px 48px 72px;width:100%;max-width:1340px;animation: mainSlide 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards}
 @keyframes mainSlide{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
 
 .topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:32px}
-.topbar h1{margin:0;font-size:28px;font-weight:800;letter-spacing:-0.5px;background:linear-gradient(135deg,#fff,#94a3b8);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.topbar p{margin:8px 0 0;color:var(--muted);font-size:14.5px}
-.status{display:inline-flex;align-items:center;gap:10px;padding:9px 18px;border:1px solid var(--border);border-radius:999px;background:var(--surface);font-size:12.5px;font-weight:700;white-space:nowrap;box-shadow:var(--shadow);backdrop-filter:blur(8px)}
+.topbar h1{margin:0;font-size:28px;font-weight:800;letter-spacing:-0.5px;color:var(--text)}
+.topbar p{margin:6px 0 0;color:var(--muted);font-size:14px}
+.status{display:inline-flex;align-items:center;gap:10px;padding:9px 18px;border:1px solid var(--border);border-radius:999px;background:var(--surface);font-size:12.5px;font-weight:700;white-space:nowrap;box-shadow:var(--shadow)}
 .dot{width:9px;height:9px;border-radius:50%;background:var(--muted);transition:all 0.3s}
 .status.ok .dot{background:var(--ok);box-shadow:0 0 0 6px var(--ok-soft), 0 0 15px var(--ok)}
 .status.bad .dot{background:var(--danger);box-shadow:0 0 0 6px var(--danger-soft), 0 0 15px var(--danger)}
 
-/* Metrics Telemetry Bar with Hover Tilt Effect */
+/* Telemetry Metrics Grid */
 .metrics-bar{display:grid;grid-template-columns:repeat(4, 1fr);gap:18px;margin-bottom:32px}
 .metric-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px 24px;box-shadow:var(--shadow);transition:all 0.3s cubic-bezier(0.4, 0, 0.2, 1);position:relative;overflow:hidden}
 .metric-card::after{content:'';position:absolute;top:0;left:0;width:100%;height:3px;background:linear-gradient(90deg, transparent, var(--accent), transparent);opacity:0;transition:opacity 0.3s}
 .metric-card:hover{transform:translateY(-4px);border-color:var(--accent);box-shadow:var(--shadow-lg)}
 .metric-card:hover::after{opacity:1}
-.metric-card .label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px}
-.metric-card .value{font-size:24px;font-weight:800;font-family:var(--mono);color:var(--text);text-shadow:0 0 20px rgba(255,255,255,0.1)}
+.metric-card .label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px}
+.metric-card .value{font-size:24px;font-weight:800;font-family:var(--mono);color:var(--text)}
 
 .panel{display:none}
-.panel.active{display:block;animation:panelReveal 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards}
+.panel.active{display:block;animation: panelReveal 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards}
 @keyframes panelReveal{from{opacity:0;transform:scale(0.99) translateY(10px)}to{opacity:1;transform:none}}
 
-.card{background:var(--surface);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);margin-bottom:28px;overflow:hidden;backdrop-filter:blur(12px);transition:border-color 0.3s}
-.card:hover{border-color:rgba(16,185,129,0.3)}
-.card-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:24px 28px;border-bottom:1px solid var(--border);background:rgba(255,255,255,0.01)}
-.card-head h2{margin:0;font-size:18px;font-weight:750;letter-spacing:-0.2px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);margin-bottom:28px;overflow:hidden;transition:border-color 0.3s}
+.card:hover{border-color:var(--border-strong)}
+.card-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:24px 28px;border-bottom:1px solid var(--border);background:var(--surface-2)}
+.card-head h2{margin:0;font-size:18px;font-weight:750}
 .card-head p{margin:6px 0 0;color:var(--muted);font-size:13.5px}
 .card-body{padding:28px}
 
-label{display:block;margin-bottom:9px;font-size:12px;font-weight:750;color:var(--muted);letter-spacing:0.6px;text-transform:uppercase}
+label{display:block;margin-bottom:9px;font-size:11.5px;font-weight:800;color:var(--muted);letter-spacing:0.8px;text-transform:uppercase}
 .field{margin-bottom:22px}
 .field:last-child{margin-bottom:0}
-input,select,textarea{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border-strong);border-radius:12px;padding:12px 18px;font:inherit;transition:all 0.25s cubic-bezier(0.4, 0, 0.2, 1)}
+input,select,textarea{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font:inherit;transition:all 0.25s cubic-bezier(0.4, 0, 0.2, 1)}
 textarea{font-family:var(--mono);font-size:13.5px;resize:vertical;min-height:180px}
-input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft), 0 0 20px rgba(16,185,129,0.2);outline:none;background:var(--surface-2)}
-.input-group{display:flex;align-items:stretch;border:1px solid var(--border-strong);border-radius:12px;background:var(--bg);overflow:hidden;transition:all 0.25s cubic-bezier(0.4, 0, 0.2, 1)}
-.input-group:focus-within{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft), 0 0 20px rgba(16,185,129,0.2)}
+input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft);outline:none;background:var(--surface-2)}
+.input-group{display:flex;align-items:stretch;border:1px solid var(--border);border-radius:12px;background:var(--bg);overflow:hidden;transition:all 0.25s cubic-bezier(0.4, 0, 0.2, 1)}
+.input-group:focus-within{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
 .input-group input{border:0;background:transparent;border-radius:0;font-family:var(--mono);font-size:13.5px;padding:12px 18px}
 .input-group input:focus-visible{outline:none}
 .icon-btn{display:inline-grid;place-items:center;width:48px;flex:none;border:0;border-left:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:all 0.2s}
 .icon-btn:hover{background:var(--accent-soft);color:var(--accent)}
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:22px}
 
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;padding:12px 22px;border-radius:12px;border:1px solid transparent;font-weight:700;cursor:pointer;white-space:nowrap;transition:all 0.25s cubic-bezier(0.4, 0, 0.2, 1);position:relative;overflow:hidden}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;padding:12px 24px;border-radius:12px;border:1px solid transparent;font-weight:700;cursor:pointer;white-space:nowrap;transition:all 0.25s cubic-bezier(0.4, 0, 0.2, 1);position:relative;overflow:hidden}
 .btn::after{content:'';position:absolute;inset:0;background:rgba(255,255,255,0.1);opacity:0;transition:opacity 0.2s}
 .btn:hover::after{opacity:1}
 .btn-sm{padding:8px 16px;font-size:13px}
-.btn-primary{background:linear-gradient(135deg, #10b981, #059669);color:var(--accent-ink);box-shadow:0 4px 20px rgba(16,185,129,0.35)}
-.btn-primary:hover{transform:translateY(-2px);box-shadow:0 6px 25px rgba(16,185,129,0.5)}
-.btn-secondary{background:var(--surface);color:var(--text);border-color:var(--border-strong)}
-.btn-secondary:hover{background:var(--surface-2);border-color:var(--accent);transform:translateY(-2px);box-shadow:0 4px 15px rgba(0,0,0,0.5)}
-.btn-danger-ghost{background:transparent;color:var(--danger);border-color:var(--border-strong)}
+.btn-primary{background:var(--accent);color:var(--accent-ink);box-shadow:0 4px 20px rgba(46,160,67,0.35)}
+.btn-primary:hover{background:var(--accent-hover);transform:translateY(-2px);box-shadow:0 6px 25px rgba(46,160,67,0.5)}
+.btn-secondary{background:var(--surface-2);color:var(--text);border-color:var(--border)}
+.btn-secondary:hover{background:var(--border);border-color:var(--border-strong);transform:translateY(-2px)}
+.btn-danger-ghost{background:transparent;color:var(--danger);border-color:var(--border)}
 .btn-danger-ghost:hover{background:var(--danger-soft);border-color:var(--danger);transform:translateY(-2px)}
 
 .seg{display:inline-flex;padding:5px;gap:6px;background:var(--bg);border:1px solid var(--border);border-radius:14px;margin-bottom:28px}
 .seg button{border:0;background:transparent;padding:9px 20px;border-radius:10px;font-weight:700;color:var(--muted);cursor:pointer;transition:all 0.25s}
-.seg button:hover{color:var(--text);background:rgba(255,255,255,0.03)}
-.seg button.active{background:var(--surface);color:var(--text);box-shadow:var(--shadow);border:1px solid var(--border-strong)}
+.seg button:hover{color:var(--text)}
+.seg button.active{background:var(--surface-2);color:var(--text);box-shadow:var(--shadow);border:1px solid var(--border)}
 
-/* Quick Templates Bar */
 .templates-bar{display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap}
-.template-chip{background:var(--surface-2);border:1px solid var(--border-strong);color:var(--text);padding:8px 14px;border-radius:10px;font-size:12.5px;font-weight:700;cursor:pointer;transition:all 0.25s;box-shadow:var(--shadow)}
-.template-chip:hover{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);transform:translateY(-2px);box-shadow:0 0 15px rgba(16,185,129,0.3)}
+.template-chip{background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:8px 14px;border-radius:10px;font-size:12.5px;font-weight:700;cursor:pointer;transition:all 0.25s;box-shadow:var(--shadow)}
+.template-chip:hover{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);transform:translateY(-2px)}
 
 .url-bar{display:grid;grid-template-columns:140px minmax(0,1fr) auto;gap:14px;margin-bottom:28px}
 .url-bar select{font-weight:800}
 .url-bar input{font-family:var(--mono);font-size:13.5px}
 .header-row{display:grid;grid-template-columns:1fr 1fr 48px;gap:14px;margin-bottom:14px}
-.header-row .icon-btn{border:1px solid var(--border-strong);border-radius:12px}
+.header-row .icon-btn{border:1px solid var(--border);border-radius:12px}
 .hint{margin:14px 0 0;color:var(--muted);font-size:13.5px}
 .hint b{color:var(--text);font-weight:700}
 
 .tag{font-family:var(--mono);font-weight:800;font-size:13.5px;letter-spacing:0.4px;text-align:center;cursor:default;border:1px solid;user-select:all}
-.tag-blue{color:var(--blue);background:rgba(56,189,248,0.12);border-color:rgba(56,189,248,0.3)}
-.tag-violet{color:var(--violet);background:rgba(167,139,250,0.12);border-color:rgba(167,139,250,0.3)}
-.tag-amber{color:var(--amber);background:rgba(251,191,36,0.12);border-color:rgba(251,191,36,0.3)}
-.tag-green{color:var(--green);background:rgba(52,211,153,0.12);border-color:rgba(52,211,153,0.3)}
+.tag-blue{color:var(--info);background:var(--info-soft);border-color:rgba(88,166,255,0.3)}
+.tag-violet{color:#bc8cff;background:rgba(188,140,255,0.15);border-color:rgba(188,140,255,0.3)}
+.tag-amber{color:var(--warn);background:var(--warn-soft);border-color:rgba(210,153,34,0.3)}
+.tag-green{color:var(--ok);background:var(--ok-soft);border-color:rgba(63,185,80,0.3)}
+
 .auth-row{display:grid;grid-template-columns:190px 140px minmax(0,1fr);gap:16px;align-items:end;margin-bottom:18px}
 .auth-row.two{grid-template-columns:190px minmax(0,1fr)}
 .auth-row.opt{grid-template-columns:150px 190px minmax(0,1fr)}
@@ -529,7 +441,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 
 .toolbar .seg{margin:0}
 .spacer{flex:1}
 
-.log{background:var(--surface);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);margin-bottom:18px;overflow:hidden;transition:all 0.3s cubic-bezier(0.4, 0, 0.2, 1);animation:logSlide 0.4s ease}
+.log{background:var(--surface);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);margin-bottom:18px;overflow:hidden;transition:all 0.3s cubic-bezier(0.4, 0, 0.2, 1);animation: logSlide 0.4s ease}
 @keyframes logSlide{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 .log:hover{border-color:var(--border-strong);box-shadow:var(--shadow-lg)}
 .log-head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:20px 26px}
@@ -546,24 +458,24 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 
 pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);border-radius:14px;font:13.5px/1.65 var(--mono);overflow:auto;max-height:420px;white-space:pre-wrap;word-break:break-word;box-shadow:inset 0 2px 6px rgba(0,0,0,0.6)}
 .trunc{margin-top:10px;font-size:13px;color:var(--warn)}
 .badge{display:inline-flex;align-items:center;padding:4px 12px;border-radius:999px;font-size:12px;font-weight:800;letter-spacing:0.4px}
-.b-info{background:var(--info-soft);color:var(--info);border:1px solid rgba(56,189,248,0.3)}
-.b-ok{background:var(--ok-soft);color:var(--ok);border:1px solid rgba(16,185,129,0.3)}
-.b-warn{background:var(--warn-soft);color:var(--warn);border:1px solid rgba(245,158,11,0.3)}
-.b-err{background:var(--danger-soft);color:var(--danger);border:1px solid rgba(239,68,68,0.3)}
+.b-info{background:var(--info-soft);color:var(--info);border:1px solid rgba(88,166,255,0.3)}
+.b-ok{background:var(--ok-soft);color:var(--ok);border:1px solid rgba(63,185,80,0.3)}
+.b-warn{background:var(--warn-soft);color:var(--warn);border:1px solid rgba(210,153,34,0.3)}
+.b-err{background:var(--danger-soft);color:var(--danger);border:1px solid rgba(248,81,73,0.3)}
 .b-neutral{background:var(--bg);color:var(--muted);border:1px solid var(--border)}
-.empty{display:grid;place-items:center;gap:12px;text-align:center;padding:80px 24px;border:1px dashed var(--border-strong);border-radius:18px;color:var(--muted);background:var(--surface)}
+.empty{display:grid;place-items:center;gap:12px;text-align:center;padding:80px 24px;border:1px dashed var(--border);border-radius:18px;color:var(--muted);background:var(--surface)}
 .empty .icon{width:36px;height:36px;color:var(--accent)}
 .empty strong{color:var(--text);font-size:16px}
 
 .toasts{position:fixed;right:28px;bottom:28px;display:flex;flex-direction:column;gap:12px;z-index:60}
-.toast{min-width:280px;max-width:420px;padding:16px 20px;border-radius:14px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-left:5px solid var(--info);box-shadow:var(--shadow-lg);font-size:14px;animation:toastIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;backdrop-filter:blur(16px)}
+.toast{min-width:280px;max-width:420px;padding:16px 20px;border-radius:14px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-left:5px solid var(--info);box-shadow:var(--shadow-lg);font-size:14px;animation: toastIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards}
 @keyframes toastIn{from{opacity:0;transform:translateX(30px) scale(0.95)}to{opacity:1;transform:none}}
-.toast.success{border-left-color:var(--ok);box-shadow:0 10px 30px rgba(16,185,129,0.3)}
-.toast.error{border-left-color:var(--danger);box-shadow:0 10px 30px rgba(239,68,68,0.3)}
+.toast.success{border-left-color:var(--ok)}
+.toast.error{border-left-color:var(--danger)}
 
-.modal{position:fixed;inset:0;background:rgba(2,4,10,0.8);display:grid;place-items:center;padding:24px;z-index:80;backdrop-filter:blur(12px);animation:modalFade 0.3s ease}
+.modal{position:fixed;inset:0;background:rgba(1,4,9,0.85);display:grid;place-items:center;padding:24px;z-index:80;backdrop-filter:blur(12px);animation: modalFade 0.3s ease}
 @keyframes modalFade{from{opacity:0}to{opacity:1}}
-.dialog{width:100%;max-width:460px;background:var(--surface);border:1px solid var(--border-strong);border-radius:20px;padding:32px;box-shadow:var(--shadow-lg);animation:dialogPopup 0.4s cubic-bezier(0.16, 1, 0.3, 1)}
+.dialog{width:100%;max-width:460px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:32px;box-shadow:var(--shadow-lg);animation: dialogPopup 0.4s cubic-bezier(0.16, 1, 0.3, 1)}
 @keyframes dialogPopup{from{opacity:0;transform:scale(0.9) translateY(20px)}to{opacity:1;transform:none}}
 .dialog h3{margin:0 0 12px;font-size:20px;font-weight:800}
 .dialog p{margin:0 0 28px;color:var(--muted);font-size:14px}
@@ -599,18 +511,17 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
   <aside class="sidebar">
     <div class="brand">
       <div class="brand-mark"><svg class="icon"><use href="#i-hex"/></svg></div>
-      <div><strong>NexRelay</strong><span>Cinematic Hub</span></div>
+      <div><strong>NexRelay</strong><span>Matrix Hub</span></div>
     </div>
-    <div class="nav-label">Workspace</div>
+    <div class="nav-label">Navigation</div>
     <nav class="nav" aria-label="Primary">
       <button type="button" class="nav-item active" data-panel="inbound" data-route="/hub/inbound"><svg class="icon"><use href="#i-in"/></svg>Inbound Webhook</button>
       <button type="button" class="nav-item" data-panel="outbound" data-route="/hub/outbound"><svg class="icon"><use href="#i-out"/></svg>Outbound Client</button>
       <button type="button" class="nav-item" data-panel="logs" data-route="/hub/logs"><svg class="icon"><use href="#i-list"/></svg>Execution Logs<span class="count" id="logCount">0</span></button>
     </nav>
     <div class="side-foot">
-      <div class="lbl">Workspace ID</div>
-      <code id="deviceIdBadge">—</code>
-      <button type="button" class="btn-side" id="newSessionBtn">New Workspace</button>
+      <div class="lbl">Matrix Mode</div>
+      <div>Unified secret-free webhook listener active.</div>
     </div>
   </aside>
 
@@ -620,7 +531,7 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
       <div class="status" id="statusPill"><span class="dot"></span><span id="statusText">Checking gateway…</span></div>
     </header>
 
-    <!-- Metrics Telemetry Bar -->
+    <!-- Telemetry Bar -->
     <div class="metrics-bar">
       <div class="metric-card">
         <div class="label">Total Requests</div>
@@ -635,15 +546,15 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
         <div class="value" id="metricLatency">0 ms</div>
       </div>
       <div class="metric-card">
-        <div class="label">Active Security</div>
-        <div class="value" id="metricSession">Encrypted</div>
+        <div class="label">Security State</div>
+        <div class="value" id="metricSession">Secured</div>
       </div>
     </div>
 
-    <!-- Inbound -->
+    <!-- Inbound Panel -->
     <section id="panel-inbound" class="panel active">
       <div class="card">
-        <div class="card-head"><div><h2>Secure Webhook Endpoint URL</h2><p>Pristine, secret-free URL route with dynamic history state routing.</p></div></div>
+        <div class="card-head"><div><h2>Inbound Webhook Endpoint URL</h2><p>Pristine, secret-free URL route. Zero tokens or keys exposed in query parameters.</p></div></div>
         <div class="card-body">
           <div class="field">
             <label for="inboundUrlBox">Endpoint URL</label>
@@ -657,7 +568,7 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
 
       <div class="card">
         <div class="card-head">
-          <div><h2>Authentication Credentials</h2><p>Cryptographically secure tokens rotating on demand. Zero keys in URL.</p></div>
+          <div><h2>Authentication Credentials</h2><p>Cryptographically secure tokens rotating on demand. Strictly transmitted via HTTP headers.</p></div>
           <button type="button" class="btn btn-secondary btn-sm" id="rotateBtn"><svg class="icon"><use href="#i-refresh"/></svg>Rotate Credentials</button>
         </div>
         <div class="card-body">
@@ -682,7 +593,7 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
               <div class="field">
                 <label for="bearerBox">Token</label>
                 <div class="input-group">
-                  <input type="password" id="bearerBox" readonly autocomplete="new-password" spellcheck="false" placeholder="Issuing…">
+                  <input type="password" id="bearerBox" readonly autocomplete="new-password" spellcheck="false" placeholder="Loading…">
                   <button type="button" class="icon-btn" data-reveal="bearerBox" title="Show / hide" aria-label="Show or hide token"><svg class="icon"><use href="#i-eye"/></svg></button>
                   <button type="button" class="icon-btn" data-copy="bearerBox" data-label="Bearer token" title="Copy token" aria-label="Copy token"><svg class="icon"><use href="#i-copy"/></svg></button>
                 </div>
@@ -700,20 +611,20 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
               <div class="field">
                 <label for="basicUserBox">Username (Permanent)</label>
                 <div class="input-group">
-                  <input type="text" id="basicUserBox" readonly spellcheck="false" placeholder="Issuing…">
+                  <input type="text" id="basicUserBox" readonly spellcheck="false" placeholder="Loading…">
                   <button type="button" class="icon-btn" data-copy="basicUserBox" data-label="Username" title="Copy" aria-label="Copy username"><svg class="icon"><use href="#i-copy"/></svg></button>
                 </div>
               </div>
               <div class="field">
                 <label for="basicPassBox">Password</label>
                 <div class="input-group">
-                  <input type="password" id="basicPassBox" readonly autocomplete="new-password" spellcheck="false" placeholder="Issuing…">
+                  <input type="password" id="basicPassBox" readonly autocomplete="new-password" spellcheck="false" placeholder="Loading…">
                   <button type="button" class="icon-btn" data-reveal="basicPassBox" title="Show / hide" aria-label="Show or hide password"><svg class="icon"><use href="#i-eye"/></svg></button>
                   <button type="button" class="icon-btn" data-copy="basicPassBox" data-label="Password" title="Copy" aria-label="Copy password"><svg class="icon"><use href="#i-copy"/></svg></button>
                 </div>
               </div>
             </div>
-            <p class="hint">In ServiceNow, set the REST Message Authentication type to <b>Basic</b>.</p>
+            <p class="hint">In ServiceNow, set REST Message Authentication type to <b>Basic</b>.</p>
           </div>
 
           <!-- API Key -->
@@ -721,12 +632,11 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
             <div class="field">
               <label for="apiKeyBox">API Key</label>
               <div class="input-group">
-                <input type="password" id="apiKeyBox" readonly autocomplete="new-password" spellcheck="false" placeholder="Issuing…">
+                <input type="password" id="apiKeyBox" readonly autocomplete="new-password" spellcheck="false" placeholder="Loading…">
                 <button type="button" class="icon-btn" data-reveal="apiKeyBox" title="Show / hide" aria-label="Show or hide API key"><svg class="icon"><use href="#i-eye"/></svg></button>
                 <button type="button" class="icon-btn" data-copy="apiKeyBox" data-label="API key" title="Copy" aria-label="Copy API key"><svg class="icon"><use href="#i-copy"/></svg></button>
               </div>
             </div>
-
             <div class="opt-title">Header Authentication (Secure & Recommended)</div>
             <div class="auth-row opt">
               <div class="field">
@@ -761,14 +671,14 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
               <div class="field">
                 <label for="oauthIdBox">Client ID</label>
                 <div class="input-group">
-                  <input type="text" id="oauthIdBox" readonly spellcheck="false" placeholder="Issuing…">
+                  <input type="text" id="oauthIdBox" readonly spellcheck="false" placeholder="Loading…">
                   <button type="button" class="icon-btn" data-copy="oauthIdBox" data-label="Client ID" title="Copy" aria-label="Copy client ID"><svg class="icon"><use href="#i-copy"/></svg></button>
                 </div>
               </div>
               <div class="field">
                 <label for="oauthSecretBox">Client Secret</label>
                 <div class="input-group">
-                  <input type="password" id="oauthSecretBox" readonly autocomplete="new-password" spellcheck="false" placeholder="Issuing…">
+                  <input type="password" id="oauthSecretBox" readonly autocomplete="new-password" spellcheck="false" placeholder="Loading…">
                   <button type="button" class="icon-btn" data-reveal="oauthSecretBox" title="Show / hide" aria-label="Show or hide client secret"><svg class="icon"><use href="#i-eye"/></svg></button>
                   <button type="button" class="icon-btn" data-copy="oauthSecretBox" data-label="Client secret" title="Copy" aria-label="Copy client secret"><svg class="icon"><use href="#i-copy"/></svg></button>
                 </div>
@@ -784,18 +694,17 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
           <div><h2>Quick Test cURL</h2><p>Ready-to-run cURL command for your selected auth method.</p></div>
           <button type="button" class="btn btn-secondary btn-sm" data-copy="curlBox" data-label="cURL command"><svg class="icon"><use href="#i-copy"/></svg>Copy</button>
         </div>
-        <div class="card-body"><pre id="curlBox">Issuing credentials…</pre></div>
+        <div class="card-body"><pre id="curlBox">Loading credentials…</pre></div>
       </div>
     </section>
 
-    <!-- Outbound -->
+    <!-- Outbound Panel -->
     <section id="panel-outbound" class="panel">
       <div class="card">
         <div class="card-head">
           <div><h2>ServiceNow Request Builder</h2><p>Execute authenticated requests against your PDI or ServiceNow tables with built-in templates.</p></div>
         </div>
         <div class="card-body">
-          <!-- Quick Templates Bar -->
           <div class="templates-bar">
             <span style="font-size: 11.5px; font-weight: 800; color: var(--muted); align-self: center; text-transform: uppercase;">Templates:</span>
             <button type="button" class="template-chip" data-template="incident-post">+ Create Incident</button>
@@ -866,7 +775,7 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
           <div class="tab-panel" data-panel-group="pm" id="pm-body" hidden>
             <label for="httpBody">Raw JSON Body</label>
             <textarea id="httpBody" rows="8" spellcheck="false">{
-  "short_description": "Cinematic automated incident created via NexRelay",
+  "short_description": "Automated incident created via Matrix Command Center",
   "urgency": "2",
   "impact": "2",
   "category": "software"
@@ -876,7 +785,7 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
       </div>
     </section>
 
-    <!-- Logs -->
+    <!-- Logs Panel -->
     <section id="panel-logs" class="panel">
       <div class="toolbar">
         <div class="seg" role="tablist" aria-label="Filter logs" style="margin:0">
@@ -909,26 +818,20 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
 (function () {
   'use strict';
 
-  var API = '/api/v1/servicenow';
-  var DEVICE_RE = /^sn_dev_[a-f0-9]{48}$/;
+  var API = '/api/servicenow';
   var MAX_RENDER_CHARS = 50000;
   var PAGES = {
-    inbound: ['Inbound Webhook Hub', 'Receive ServiceNow payloads on a secured, secret-free workspace endpoint.'],
+    inbound: ['Inbound Webhook Hub', 'Receive ServiceNow payloads on a clean, secret-free endpoint URL.'],
     outbound: ['Outbound HTTP Client', 'Send authenticated requests to your ServiceNow instance.'],
-    logs: ['Execution Logs & Audit', 'Real-time audit trail of inbound and outbound traffic for this workspace.']
+    logs: ['Execution Logs & Audit', 'Real-time audit trail of inbound and outbound traffic.']
   };
-  var state = { deviceId: '', creds: null, credTab: 'cred-bearer', seen: {}, primed: false, inbound: [], outbound: [], filter: 'all', sending: false, sig: '', open: {} };
+  var state = { creds: null, credTab: 'cred-bearer', seen: {}, primed: false, inbound: [], outbound: [], filter: 'all', sending: false, sig: '', open: {} };
 
   function $(id) { return document.getElementById(id); }
   function esc(v) {
     return String(v === undefined || v === null ? '' : v)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-  }
-  function hex(n) {
-    var a = new Uint8Array(n);
-    crypto.getRandomValues(a);
-    return Array.prototype.map.call(a, function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
   }
   function formatTime(iso) {
     var d = new Date(iso);
@@ -940,7 +843,7 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
     el.className = 'toast ' + (kind || 'info');
     el.textContent = msg;
     $('toasts').appendChild(el);
-    setTimeout(function () { el.remove(); }, 3600);
+    setTimeout(function () { el.remove(); }, 3400);
   }
 
   var modalResolve = null;
@@ -995,7 +898,6 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
     setTimeout(function () { swapIcon(btn, btn.getAttribute('data-orig')); }, 1400);
   }
 
-  // HTML5 History API Routing Integration
   function showPanel(name, pushHistory) {
     Array.prototype.forEach.call(document.querySelectorAll('.panel'), function (p) {
       p.classList.toggle('active', p.id === 'panel-' + name);
@@ -1008,12 +910,11 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
       $('pageSub').textContent = PAGES[name][1];
     }
     if (pushHistory) {
-      var route = '/hub/' + name;
-      history.pushState({ panel: name }, '', route);
+      history.pushState({ panel: name }, '', '/hub/' + name);
     }
   }
 
-  window.addEventListener('popstate', function(e) {
+  window.addEventListener('popstate', function() {
     var path = location.pathname;
     if (path.includes('/outbound')) showPanel('outbound', false);
     else if (path.includes('/logs')) showPanel('logs', false);
@@ -1032,22 +933,10 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
     if (group === 'cred') { state.credTab = target; renderCurl(); }
   }
 
-  function getDeviceId() {
-    var id = '';
-    try { id = localStorage.getItem('nex_device_token') || ''; } catch (e) { id = ''; }
-    if (!DEVICE_RE.test(id)) {
-      id = 'sn_dev_' + hex(24);
-      try { localStorage.setItem('nex_device_token', id); } catch (e) {}
-    }
-    return id;
-  }
-
   function renderCredentials() {
-    $('deviceIdBadge').textContent = state.deviceId.slice(0, 15) + '…';
     var base = location.origin + API;
-    var url = base + '/inbound/' + state.deviceId;
-    $('inboundUrlBox').value = url;
-    $('oauthUrlBox').value = base + '/oauth/token/' + state.deviceId;
+    $('inboundUrlBox').value = base + '/inbound';
+    $('oauthUrlBox').value = base + '/oauth/token';
     var c = state.creds;
     if (!c) { renderCurl(); return; }
     $('bearerBox').value = c.bearer;
@@ -1065,10 +954,10 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
   function renderCurl() {
     var box = $('curlBox');
     var c = state.creds;
-    if (!c) { box.textContent = 'Issuing credentials…'; return; }
+    if (!c) { box.textContent = 'Loading credentials…'; return; }
     var url = $('inboundUrlBox').value;
     var tail = "  -H 'Content-Type: application/json' \\\n" +
-      "  -d '{\"short_description\":\"Test payload from NexRelay Cinematic\"}'";
+      "  -d '{\"short_description\":\"Test payload from NexRelay Matrix\"}'";
     var head = "curl -X POST '" + url + "' \\\n";
     var out;
     if (state.credTab === 'cred-basic') {
@@ -1089,21 +978,23 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
     box.textContent = out;
   }
 
-  function rotateCredentials(manual) {
-    return fetch(API + '/session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ deviceId: state.deviceId })
-    }).then(function (r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    }).then(function (c) {
-      state.creds = c;
-      renderCredentials();
-      if (manual) toast('New credentials issued securely. Previous keys revoked.', 'success');
-    }).catch(function (e) {
-      toast('Could not issue credentials: ' + e.message, 'error');
-    });
+  function fetchCredentials() {
+    return fetch(API + '/credentials', { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (c) { state.creds = c; renderCredentials(); })
+      .catch(function (e) { toast('Could not load credentials: ' + e.message, 'error'); });
+  }
+
+  function rotateCredentials() {
+    return fetch(API + '/credentials/rotate', { method: 'POST' })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (c) {
+        state.creds = c;
+        renderCredentials();
+        toast('New credentials issued securely. Previous keys revoked.', 'success');
+      }).catch(function (e) {
+        toast('Could not rotate credentials: ' + e.message, 'error');
+      });
   }
 
   function signature(inb, out) {
@@ -1112,8 +1003,7 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
 
   function updateMetrics() {
     var all = state.outbound.concat(state.inbound);
-    var total = all.length;
-    $('metricTotal').textContent = total;
+    $('metricTotal').textContent = all.length;
 
     var successes = state.outbound.filter(function(o) { return o.statusCode >= 200 && o.statusCode < 300; }).length;
     var outboundTotal = state.outbound.length;
@@ -1126,8 +1016,8 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
   }
 
   function loadLogs() {
-    if (document.hidden || !state.deviceId) return;
-    fetch(API + '/logs', { headers: { 'X-Device-Token': state.deviceId }, cache: 'no-store' })
+    if (document.hidden) return;
+    fetch(API + '/logs', { cache: 'no-store' })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (!d || !d.inbound || !d.outbound) return;
@@ -1204,11 +1094,11 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
   function deleteRecord(id) {
     confirmDialog({
       title: 'Delete record?',
-      message: 'Record ' + id + ' will be permanently purged from this workspace.',
+      message: 'Record ' + id + ' will be permanently purged.',
       confirmLabel: 'Delete record', danger: true
     }).then(function (yes) {
       if (!yes) return;
-      return fetch(API + '/logs/' + encodeURIComponent(id), { method: 'DELETE', headers: { 'X-Device-Token': state.deviceId } })
+      return fetch(API + '/logs/' + encodeURIComponent(id), { method: 'DELETE' })
         .then(function (r) {
           if (r.ok) {
             state.inbound = state.inbound.filter(function (i) { return i.id !== id; });
@@ -1226,11 +1116,11 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
     if (!total) { toast('No records to delete', 'info'); return; }
     confirmDialog({
       title: 'Delete all records?',
-      message: 'All ' + total + ' records in this workspace will be permanently wiped.',
+      message: 'All ' + total + ' records will be permanently wiped.',
       confirmLabel: 'Delete all', danger: true
     }).then(function (yes) {
       if (!yes) return;
-      return fetch(API + '/logs', { method: 'DELETE', headers: { 'X-Device-Token': state.deviceId } })
+      return fetch(API + '/logs', { method: 'DELETE' })
         .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
         .then(function (d) {
           state.inbound = []; state.outbound = []; state.open = {};
@@ -1272,7 +1162,7 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
       methodInput.value = 'POST';
       urlInput.value = 'https://dev_instance.service-now.com/api/now/table/incident';
       bodyInput.value = JSON.stringify({
-        short_description: "Cinematic test incident from NexRelay",
+        short_description: "Automated incident created via Matrix Command Center",
         urgency: "2",
         impact: "2",
         category: "hardware"
@@ -1320,7 +1210,7 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
 
     fetch(API + '/outbound', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Device-Token': state.deviceId },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         method: method, url: url, authType: $('authType').value,
         basicUser: $('basicUser').value, basicPass: $('basicPass').value,
@@ -1369,7 +1259,7 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
       return;
     }
     if ((el = t.closest('[data-copy-header]'))) {
-      if (!state.creds) { toast('Credentials still issuing', 'error'); return; }
+      if (!state.creds) { toast('Credentials still loading', 'error'); return; }
       copyText('Bearer ' + state.creds.bearer, 'Authorization header value', el);
       return;
     }
@@ -1416,34 +1306,17 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
   $('modalConfirm').addEventListener('click', function () { closeModal(true); });
   $('modalCancel').addEventListener('click', function () { closeModal(false); });
 
-  $('rotateBtn').addEventListener('click', function () { rotateCredentials(true); });
+  $('rotateBtn').addEventListener('click', rotateCredentials);
   $('clearAllBtn').addEventListener('click', deleteAll);
   $('sendBtn').addEventListener('click', sendOutbound);
   $('addHeaderBtn').addEventListener('click', function () { addHeaderRow('', ''); });
   $('authType').addEventListener('change', updateAuthFields);
   $('httpMethod').addEventListener('change', updateBodyState);
 
-  $('newSessionBtn').addEventListener('click', function () {
-    confirmDialog({
-      title: 'Initialize new workspace?',
-      message: 'You will be provisioned a fresh endpoint URL and an empty log matrix.',
-      confirmLabel: 'Initialize workspace'
-    }).then(function (yes) {
-      if (!yes) return;
-      state.deviceId = 'sn_dev_' + hex(24);
-      try { localStorage.setItem('nex_device_token', state.deviceId); } catch (e) {}
-      state.creds = null; state.inbound = []; state.outbound = []; state.open = {}; state.sig = '';
-      renderCredentials(); renderLogs(); updateMetrics();
-      rotateCredentials(false).then(function () { toast('Cinematic workspace initialized', 'success'); });
-    });
-  });
-
-  state.deviceId = getDeviceId();
   addHeaderRow('Accept', 'application/json');
   updateAuthFields();
   updateBodyState();
 
-  // Initial route detection
   var initPath = location.pathname;
   if (initPath.includes('/outbound')) showPanel('outbound', false);
   else if (initPath.includes('/logs')) showPanel('logs', false);
@@ -1452,7 +1325,7 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
   renderCredentials();
   renderLogs();
   updateMetrics();
-  rotateCredentials(false);
+  fetchCredentials();
   loadLogs();
   checkHealth();
   setInterval(loadLogs, 3000);
@@ -1469,15 +1342,12 @@ app.get(['/', '/hub', '/hub/inbound', '/hub/outbound', '/hub/logs'], (req, res) 
 
 app.use((err, req, res, next) => {
     if (err && err.type === 'entity.parse.failed') {
-        return res.status(400).json({
-            status: 'Error',
-            message: 'Invalid JSON body. Send valid JSON with the header Content-Type: application/json.'
-        });
+        return res.status(400).json({ status: 'Error', message: 'Invalid JSON body syntax.' });
     }
     console.error(err);
     res.status(500).json({ status: 'Error', message: 'Internal server error.' });
 });
 
 app.listen(PORT, () => {
-    console.log(`NexRelay Cinematic Edition running on port ${PORT}`);
+    console.log(`NexRelay Matrix Edition running on port ${PORT}`);
 });
