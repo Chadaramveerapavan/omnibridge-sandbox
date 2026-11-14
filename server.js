@@ -299,7 +299,6 @@ const PAGE = String.raw`<!DOCTYPE html>
 <style>
 :root{
   --bg:#060919;
-  /* True High-Translucency iOS Liquid Glass */
   --glass-bg:rgba(255, 255, 255, 0.065);
   --glass-bg-hover:rgba(255, 255, 255, 0.11);
   --glass-bg-deep:rgba(12, 18, 38, 0.42);
@@ -307,7 +306,6 @@ const PAGE = String.raw`<!DOCTYPE html>
   --glass-border:rgba(255, 255, 255, 0.22);
   --glass-border-bright:rgba(255, 255, 255, 0.48);
   --glass-blur:blur(36px) saturate(190%);
-  /* Specular Top-Rim + Inner Depth Refraction */
   --glass-shadow:
     0 24px 48px rgba(0, 0, 0, 0.45),
     inset 0 1px 1px rgba(255, 255, 255, 0.48),
@@ -321,8 +319,6 @@ const PAGE = String.raw`<!DOCTYPE html>
   --muted:rgba(235, 242, 255, 0.74);
   --accent:#38bdf8;
   --accent-2:#34d399;
-  --accent-pink:#f472b6;
-  --accent-ink:#04101e;
   --ok:#34d399;
   --warn:#fbbf24;
   --coral:#fb7185;
@@ -340,7 +336,7 @@ button{font:inherit}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #fff;outline-offset:2px}
 .icon{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
-/* ==================== VIVID LIQUID MESH BLOBS (FOR GLASS REFRACTION) ==================== */
+/* ==================== VIVID LIQUID MESH BLOBS ==================== */
 .liquid-wallpaper{
   position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;
   background:radial-gradient(circle at 15% 15%, #172554 0%, #090d24 55%, #040612 100%);
@@ -369,16 +365,15 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 @keyframes liquidFloat2{0%{transform:translate3d(0,0,0) scale(1.05)}100%{transform:translate3d(-120px,-70px,0) scale(0.92)}}
 @keyframes liquidFloat3{0%{transform:translate3d(-40px,20px,0) scale(0.95)}100%{transform:translate3d(70px,-60px,0) scale(1.15)}}
 
-/* Subtle Interactive Web Overlay */
 #webCanvas{
   position:fixed;inset:0;width:100vw;height:100vh;z-index:1;pointer-events:none;
 }
 
-/* Pure GPU Opacity Refraction Flash */
+/* Butter-Smooth GPU Refraction Flash */
 #warpVignette{
   position:fixed;inset:0;z-index:90;pointer-events:none;opacity:0;
-  background:radial-gradient(circle at var(--wx, 50%) var(--wy, 50%), rgba(255,255,255,0.28) 0%, rgba(56,189,248,0.16) 40%, rgba(6,9,25,0.75) 85%);
-  transition:opacity 0.34s cubic-bezier(0.16, 1, 0.3, 1);
+  background:radial-gradient(circle at var(--wx, 50%) var(--wy, 50%), rgba(255,255,255,0.32) 0%, rgba(56,189,248,0.18) 42%, rgba(6,9,25,0.8) 85%);
+  transition:opacity 0.42s cubic-bezier(0.16, 1, 0.3, 1);
   will-change:opacity;
 }
 #warpVignette.active{opacity:1}
@@ -391,7 +386,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   will-change:transform,opacity;
 }
 .home-view.diving{
-  animation:portalDiveOut 0.48s cubic-bezier(0.32, 0, 0.2, 1) forwards;
+  animation:portalDiveOut 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   pointer-events:none;
 }
 .home-view.unwarping{
@@ -399,10 +394,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 }
 @keyframes portalDiveOut{
   0%{transform:scale3d(1,1,1);opacity:1}
-  100%{transform:scale3d(1.28,1.28,1);opacity:0}
+  100%{transform:scale3d(1.22,1.22,1);opacity:0}
 }
 @keyframes portalSurfaceIn{
-  0%{transform:scale3d(1.12,1.12,1);opacity:0}
+  0%{transform:scale3d(1.1,1.1,1);opacity:0}
   100%{transform:scale3d(1,1,1);opacity:1}
 }
 
@@ -440,7 +435,6 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   max-width:640px;margin:0 auto 44px;color:var(--muted);font-size:16.5px;line-height:1.65;
 }
 
-/* True iOS Liquid Glass Portal Cards */
 .portal-grid{
   display:grid;grid-template-columns:repeat(3, 1fr);gap:24px;text-align:left;
 }
@@ -451,7 +445,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   border-radius:28px;padding:32px 28px;cursor:pointer;
   backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
   box-shadow:var(--glass-shadow);
-  transition:transform 0.32s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s, background 0.25s, box-shadow 0.25s;
+  transition:transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s, background 0.25s, box-shadow 0.25s;
   overflow:hidden;display:flex;flex-direction:column;justify-content:space-between;min-height:245px;
 }
 .portal-card:hover{
@@ -467,7 +461,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   background:rgba(255,255,255,0.16);color:#fff;
   border:1px solid rgba(255,255,255,0.38);
   box-shadow:inset 0 1px 1px rgba(255,255,255,0.5), 0 8px 20px rgba(0,0,0,0.2);
-  transition:transform 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .portal-card:hover .portal-icon{transform:scale3d(1.1,1.1,1) rotate(-4deg)}
 .portal-icon .icon{width:22px;height:22px}
@@ -481,9 +475,9 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .portal-card p{margin:0 0 22px;font-size:13.5px;color:var(--muted);line-height:1.55}
 .portal-cta{
   display:inline-flex;align-items:center;gap:8px;font-size:13.5px;font-weight:800;
-  color:#fff;letter-spacing:0.2px;transition:transform 0.25s;
+  color:#fff;letter-spacing:0.2px;transition:transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.portal-card:hover .portal-cta{transform:translate3d(5px,0,0)}
+.portal-card:hover .portal-cta{transform:translate3d(6px,0,0)}
 
 .home-footer{
   max-width:1280px;width:100%;margin:0 auto;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;
@@ -493,16 +487,16 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .home-stats{display:flex;gap:24px;font-family:var(--mono)}
 .home-stats b{color:#fff}
 
-/* ==================== WORKSPACE SHELL (TRUE LIQUID GLASS) ==================== */
+/* ==================== WORKSPACE SHELL ==================== */
 .app{
   position:relative;z-index:10;display:grid;grid-template-columns:280px minmax(0,1fr);min-height:100vh;
   will-change:transform,opacity;
 }
 .app.entering{
-  animation:workspaceEmerge 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation:workspaceEmerge 0.48s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 @keyframes workspaceEmerge{
-  0%{opacity:0;transform:scale3d(0.95,0.95,1)}
+  0%{opacity:0;transform:scale3d(0.96,0.96,1)}
   100%{opacity:1;transform:scale3d(1,1,1)}
 }
 
@@ -531,9 +525,9 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   border:1px solid rgba(255,255,255,0.32);border-radius:14px;
   background:linear-gradient(135deg, rgba(255,255,255,0.18), rgba(255,255,255,0.06));
   box-shadow:inset 0 1px 1px rgba(255,255,255,0.45), 0 8px 20px rgba(0,0,0,0.2);
-  color:#fff;font-weight:700;font-size:13px;cursor:pointer;transition:all 0.25s;
+  color:#fff;font-weight:700;font-size:13px;cursor:pointer;transition:all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.home-return-btn:hover{background:rgba(255,255,255,0.24);transform:translate3d(-2px,0,0)}
+.home-return-btn:hover{background:rgba(255,255,255,0.24);transform:translate3d(-3px,0,0)}
 
 .nav{display:flex;flex-direction:column;gap:8px}
 .nav-label{font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;padding:0 12px 8px;color:rgba(255,255,255,0.55)}
@@ -574,24 +568,24 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   background:linear-gradient(145deg, rgba(255,255,255,0.13) 0%, rgba(255,255,255,0.04) 100%);
   border:1px solid var(--glass-border);border-radius:22px;padding:18px 22px;
   box-shadow:var(--glass-shadow);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
-  transition:transform 0.25s, border-color 0.25s;
+  transition:transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s;
 }
 .metric-card:hover{transform:translate3d(0,-3px,0);border-color:var(--glass-border-bright)}
 .metric-card .label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px}
 .metric-card .value{font-size:22px;font-weight:800;font-family:var(--mono);color:#fff}
 
-/* Staggered Tab Animations */
+/* Velvet-Smooth Staggered Tab Animations */
 .panel{display:none}
 .panel.active{display:block}
 .panel.tab-entering .stagger-item{
   opacity:0;
-  animation:staggerCardIn 0.44s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation:staggerCardIn 0.42s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 .panel.tab-entering .stagger-item:nth-child(1){animation-delay:0.02s}
-.panel.tab-entering .stagger-item:nth-child(2){animation-delay:0.07s}
-.panel.tab-entering .stagger-item:nth-child(3){animation-delay:0.12s}
+.panel.tab-entering .stagger-item:nth-child(2){animation-delay:0.06s}
+.panel.tab-entering .stagger-item:nth-child(3){animation-delay:0.1s}
 @keyframes staggerCardIn{
-  0%{opacity:0;transform:translate3d(0,16px,0) scale3d(0.985,0.985,1)}
+  0%{opacity:0;transform:translate3d(0,14px,0) scale3d(0.985,0.985,1)}
   100%{opacity:1;transform:translate3d(0,0,0) scale3d(1,1,1)}
 }
 
@@ -641,7 +635,7 @@ input:focus,select:focus,textarea:focus{
 .btn{
   display:inline-flex;align-items:center;justify-content:center;gap:9px;padding:11px 22px;
   border-radius:14px;border:1px solid rgba(255,255,255,0.3);font-weight:700;cursor:pointer;white-space:nowrap;
-  transition:transform 0.2s, filter 0.2s, background 0.2s, box-shadow 0.2s;
+  transition:transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), filter 0.2s, background 0.2s, box-shadow 0.2s;
 }
 .btn-sm{padding:8px 15px;font-size:13px}
 .btn-primary{
@@ -770,7 +764,6 @@ pre{margin:0;padding:18px;background:rgba(10, 15, 35, 0.45);border:1px solid rgb
 </style>
 </head>
 <body>
-<!-- Vivid Liquid Wallpaper Orbs for Authentic iOS Glass Refraction -->
 <div class="liquid-wallpaper">
   <div class="blob blob-1"></div>
   <div class="blob blob-2"></div>
@@ -793,7 +786,6 @@ pre{margin:0;padding:18px;background:rgba(10, 15, 35, 0.45);border:1px solid rgb
   <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></symbol>
 </svg>
 
-<!-- Dynamic Glass Web Canvas -->
 <canvas id="webCanvas"></canvas>
 <div id="warpVignette"></div>
 
@@ -1281,6 +1273,7 @@ pre{margin:0;padding:18px;background:rgba(10, 15, 35, 0.45);border:1px solid rgb
   function renderWebLoop() {
     ctx.clearRect(0, 0, W, H);
 
+    // Butter-smooth lerp factor (0.09) for velvet feel
     cam.cx += (cam.targetX - cam.cx) * 0.09;
     cam.cy += (cam.targetY - cam.cy) * 0.09;
     cam.zoom += (cam.targetZoom - cam.zoom) * 0.09;
@@ -1404,7 +1397,7 @@ pre{margin:0;padding:18px;background:rgba(10, 15, 35, 0.45);border:1px solid rgb
       state.view = 'workspace';
       state.warping = false;
       selectPanel(targetPanel, pushHistory, true);
-    }, 440);
+    }, 420);
   }
 
   function returnToHome(pushHistory) {
@@ -1438,7 +1431,7 @@ pre{margin:0;padding:18px;background:rgba(10, 15, 35, 0.45);border:1px solid rgb
 
     if (changed && !skipWebImpulse) {
       impulseWeb(W * 0.55, H * 0.48, 1.15, 10);
-      setTimeout(settleWeb, 320);
+      setTimeout(settleWeb, 300);
     }
 
     Array.prototype.forEach.call(document.querySelectorAll('.panel'), function (p) {
