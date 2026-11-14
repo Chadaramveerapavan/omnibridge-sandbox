@@ -152,7 +152,7 @@ app.post('/api/servicenow/oauth/token', (req, res) => {
     const valid = activeSession && clientId && clientSecret &&
         matches(clientId, activeSession.clientId) && matches(clientSecret, activeSession.clientSecret);
     if (!valid) {
-        res.set('WWW-Authenticate', 'Basic realm="NexusPulse OAuth"');
+        res.set('WWW-Authenticate', 'Basic realm="OmniBridge OAuth"');
         return res.status(401).json({ error: 'invalid_client', error_description: 'Unknown client or wrong secret.' });
     }
 
@@ -168,7 +168,7 @@ app.post('/api/servicenow/oauth/token', (req, res) => {
 app.all('/api/servicenow/inbound', (req, res) => {
     const authMethod = authenticateInbound(req);
     if (!authMethod) {
-        res.set('WWW-Authenticate', 'Bearer realm="NexusPulse"');
+        res.set('WWW-Authenticate', 'Bearer realm="OmniBridge"');
         return res.status(401).json({
             status: 'Error',
             message: 'Authentication failed: Provide a valid Bearer token, Basic credentials, API key, or OAuth access token.'
@@ -289,380 +289,716 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok', uptimeSeconds: Math.round(process.uptime()) });
 });
 
-// ---- iOS Liquid Glassmorphic Frontend: NexusPulse · Enterprise Glass ----
+// ---- 100% Apple OS Glassmorphic Frontend: OmniBridge Pro · Enterprise Integration OS ----
 const PAGE = String.raw`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NexusPulse · Enterprise Glass</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>OmniBridge Pro · Enterprise Integration OS</title>
 <style>
 :root{
-  --bg:#050508;
-  --surface:rgba(22, 22, 30, 0.65);
-  --surface-hover:rgba(30, 30, 42, 0.8);
-  --border:rgba(255, 255, 255, 0.08);
-  --border-strong:rgba(0, 245, 160, 0.35);
-  --text:#f4f4f6;
-  --muted:#9ba1a6;
-  --accent:#00f5a0;
-  --accent-hover:#00dc90;
-  --accent-ink:#03140e;
-  --accent-soft:rgba(0, 245, 160, 0.12);
-  --azure:#38bdf8;
-  --azure-soft:rgba(56, 189, 248, 0.12);
-  --coral:#fb7185;
-  --coral-soft:rgba(251, 113, 133, 0.15);
-  --ok:#10b981;
-  --ok-soft:rgba(16, 185, 129, 0.15);
-  --warn:#f59e0b;
-  --warn-soft:rgba(245, 158, 11, 0.15);
-  --shadow:0 20px 40px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  --shadow-lg:0 30px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(0, 245, 160, 0.15);
-  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-  color-scheme:dark;
+  /* Apple VisionOS & macOS Sonoma Liquid Glass Design System */
+  --apple-bg: #030407;
+  --apple-canvas: #06080e;
+  
+  /* Authentic Apple Liquid Glass Materials */
+  --apple-glass-ultra-thin: rgba(255, 255, 255, 0.04);
+  --apple-glass-thin: rgba(255, 255, 255, 0.07);
+  --apple-glass-regular: rgba(20, 24, 34, 0.62);
+  --apple-glass-thick: rgba(15, 18, 27, 0.78);
+  --apple-glass-hover: rgba(255, 255, 255, 0.11);
+  --apple-glass-active: rgba(255, 255, 255, 0.16);
+
+  /* Apple Specular Edge Highlights */
+  --apple-border: rgba(255, 255, 255, 0.12);
+  --apple-border-subtle: rgba(255, 255, 255, 0.07);
+  --apple-border-bright: rgba(255, 255, 255, 0.28);
+  --apple-border-glow: rgba(0, 245, 212, 0.45);
+
+  /* Apple System Typography Colors */
+  --apple-text-primary: #f5f5f7;
+  --apple-text-secondary: #94949b;
+  --apple-text-tertiary: #686873;
+  --apple-text-link: #2997ff;
+
+  /* Apple Vibrant System Accents */
+  --accent-cyan: #00f5d4;
+  --accent-cyan-soft: rgba(0, 245, 212, 0.12);
+  --accent-blue: #0a84ff;
+  --accent-blue-soft: rgba(10, 132, 255, 0.14);
+  --accent-purple: #bf5af2;
+  --accent-purple-soft: rgba(191, 90, 242, 0.14);
+  --accent-mint: #30d158;
+  --accent-mint-soft: rgba(48, 209, 88, 0.14);
+  --accent-coral: #ff453a;
+  --accent-coral-soft: rgba(255, 69, 58, 0.14);
+  --accent-amber: #ff9f0a;
+  --accent-amber-soft: rgba(255, 159, 10, 0.14);
+
+  /* Apple System Blur & Shadows */
+  --apple-blur: blur(40px) saturate(210%) contrast(102%);
+  --apple-blur-panel: blur(48px) saturate(220%);
+  --apple-shadow-sm: 0 4px 16px rgba(0, 0, 0, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.22);
+  --apple-shadow-md: 0 16px 36px -8px rgba(0, 0, 0, 0.55), inset 0 1px 1px rgba(255, 255, 255, 0.28), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --apple-shadow-lg: 0 28px 60px -12px rgba(0, 0, 0, 0.75), 0 0 40px rgba(0, 245, 212, 0.12), inset 0 1px 1px rgba(255, 255, 255, 0.38);
+  --apple-shadow-card: 0 20px 48px -10px rgba(0, 0, 0, 0.65), inset 0 1px 1px rgba(255, 255, 255, 0.25), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  
+  /* Font Stacks */
+  --font-apple: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "SF Pro", -apple-system-subheadline, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono: "SF Mono", SFMono-Regular, ui-monospace, Menlo, Monaco, Consolas, monospace;
+
+  /* Apple Motion Curve */
+  --apple-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --apple-spring-bouncy: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --apple-ease: cubic-bezier(0.28, 0.11, 0.32, 1);
+
+  color-scheme: dark;
 }
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{
+  width:100%;min-height:100%;
+  background:var(--apple-bg);
+  color:var(--apple-text-primary);
+  font:14px/1.55 var(--font-apple);
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  text-rendering:optimizeLegibility;
+  overflow-x:hidden;
+  user-select:none;
+}
+button,input,select,textarea{font:inherit;color:inherit;outline:none}
 [hidden]{display:none!important}
-button{font:inherit}
-button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.icon{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
-/* Ambient Liquid Gradient Orbs Behind Glass */
-.ambient-glow{
-  position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;
+/* ==================== AMBIENT AURORA ORBS ==================== */
+.ambient-scene{
+  position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden;
 }
-.ambient-glow::before, .ambient-glow::after{
-  content:'';position:absolute;width:600px;height:600px;border-radius:50%;filter:blur(100px);opacity:0.22;
-  animation:floatOrb 14s ease-in-out infinite alternate;
+.aurora-orb{
+  position:absolute;border-radius:50%;filter:blur(110px);opacity:0.28;
+  will-change:transform;animation:floatAurora 18s ease-in-out infinite alternate;
 }
-.ambient-glow::before{top:-150px;left:-150px;background:var(--accent);}
-.ambient-glow::after{bottom:-150px;right:-150px;background:var(--azure);animation-delay:-7s;}
-@keyframes floatOrb{0%{transform:translate(0,0) scale(1)}100%{transform:translate(80px,60px) scale(1.15)}}
+.aurora-1{top:-120px;left:-100px;width:680px;height:680px;background:radial-gradient(circle, var(--accent-cyan) 0%, transparent 70%);}
+.aurora-2{bottom:-150px;right:-120px;width:740px;height:740px;background:radial-gradient(circle, var(--accent-purple) 0%, transparent 70%);animation-delay:-6s;}
+.aurora-3{top:35%;left:55%;width:560px;height:560px;background:radial-gradient(circle, var(--accent-blue) 0%, transparent 70%);animation-delay:-12s;opacity:0.22;}
+.aurora-4{top:60%;left:10%;width:480px;height:480px;background:radial-gradient(circle, var(--accent-mint) 0%, transparent 70%);animation-delay:-9s;opacity:0.18;}
 
-/* GPU-Composited Dynamic Web Canvas */
+@keyframes floatAurora{
+  0%{transform:translate3d(0, 0, 0) scale(1)}
+  50%{transform:translate3d(60px, 40px, 0) scale(1.12)}
+  100%{transform:translate3d(-40px, 70px, 0) scale(0.95)}
+}
+
+/* ==================== 60FPS SPIDER WEB CANVAS ==================== */
 #webCanvas{
-  position:fixed;inset:0;width:100vw;height:100vh;z-index:0;pointer-events:none;
+  position:fixed;inset:0;width:100vw;height:100vh;z-index:1;pointer-events:none;
+  opacity:0.92;transition:opacity 0.5s ease;
 }
 
-/* Glass Vignette Transition */
-#warpVignette{
-  position:fixed;inset:0;z-index:90;pointer-events:none;opacity:0;
-  background:radial-gradient(circle at var(--wx, 50%) var(--wy, 50%), rgba(0,245,160,0.25) 0%, rgba(56,189,248,0.12) 40%, rgba(5,5,8,0.95) 80%);
-  transition:opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-  will-change:opacity;
+/* ==================== DIMENSIONAL OPTICAL ILLUSION OVERLAY ==================== */
+#illusionOverlay{
+  position:fixed;inset:0;z-index:99;pointer-events:none;opacity:0;
+  background:radial-gradient(circle at var(--ix, 50%) var(--iy, 50%), rgba(0, 245, 212, 0.4) 0%, rgba(191, 90, 242, 0.25) 30%, rgba(10, 132, 255, 0.15) 55%, rgba(3, 4, 7, 0.95) 85%);
+  backdrop-filter:blur(0px);-webkit-backdrop-filter:blur(0px);
+  transition:opacity 0.28s var(--apple-ease), backdrop-filter 0.28s var(--apple-ease);
+  will-change:opacity, backdrop-filter;
 }
-#warpVignette.active{opacity:1}
+#illusionOverlay.active{
+  opacity:1;
+  backdrop-filter:blur(24px) saturate(220%);-webkit-backdrop-filter:blur(24px) saturate(220%);
+}
+#illusionOverlay::after{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(circle at var(--ix, 50%) var(--iy, 50%), transparent 0%, rgba(0,0,0,0.4) 60%, rgba(0,0,0,0.85) 100%);
+  animation:illusionPulse 0.45s var(--apple-spring) forwards;
+}
+@keyframes illusionPulse{
+  0%{transform:scale(0.85);opacity:0}
+  50%{opacity:1}
+  100%{transform:scale(1.2);opacity:0}
+}
 
-/* ==================== HOMEPAGE VIEW ==================== */
-.home-view{
-  position:relative;z-index:10;min-height:100vh;display:flex;flex-direction:column;justify-content:space-between;
-  padding:32px 48px;
+/* ==================== APPLE OS TOP NAVIGATION STATUS BAR ==================== */
+.apple-status-bar{
+  position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:80;
+  display:flex;align-items:center;gap:18px;padding:8px 20px;
+  background:var(--apple-glass-regular);
+  border:1px solid var(--apple-border);
+  border-radius:9999px;
+  backdrop-filter:var(--apple-blur);-webkit-backdrop-filter:var(--apple-blur);
+  box-shadow:var(--apple-shadow-md);
+  font-size:12px;font-weight:550;letter-spacing:-0.01em;
+  transition:transform 0.3s var(--apple-spring), background 0.3s;
+}
+.apple-status-bar:hover{
+  background:var(--apple-glass-hover);
+  border-color:var(--apple-border-bright);
+}
+.apple-os-badge{
+  display:flex;align-items:center;gap:8px;font-weight:700;letter-spacing:0.02em;color:#fff;
+}
+.apple-logo-glyph{
+  width:18px;height:18px;border-radius:6px;
+  background:linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+  display:grid;place-items:center;color:#03140e;box-shadow:0 0 14px rgba(0, 245, 212, 0.45);
+}
+.apple-divider{width:1px;height:14px;background:var(--apple-border)}
+.apple-live-clock{
+  font-family:var(--font-mono);font-size:11.5px;color:var(--apple-text-secondary);letter-spacing:0.02em;
+}
+.apple-pill-status{
+  display:inline-flex;align-items:center;gap:7px;color:var(--accent-cyan);font-size:11px;font-weight:650;
+  letter-spacing:0.05em;text-transform:uppercase;
+}
+.apple-ping-dot{
+  width:7px;height:7px;border-radius:50%;background:var(--accent-cyan);
+  box-shadow:0 0 10px var(--accent-cyan);animation:pingPulse 2s infinite;
+}
+@keyframes pingPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.5);opacity:0.4}}
+
+/* ==================== HOMEPAGE HERO (CORPORATE APPLE OS) ==================== */
+.home-stage{
+  position:relative;z-index:10;min-height:100vh;display:flex;flex-direction:column;
+  justify-content:space-between;padding:84px 48px 32px;
   transform-origin:var(--ox, 50%) var(--oy, 50%);
-  will-change:transform,opacity;
+  will-change:transform, opacity, filter;
+  transition:filter 0.4s var(--apple-spring);
 }
-.home-view.diving{
-  animation:portalDiveOut 0.5s cubic-bezier(0.32, 0, 0.2, 1) forwards;
+.home-stage.spatial-dive{
+  animation:spatialDiveOut 0.48s var(--apple-ease) forwards;
   pointer-events:none;
 }
-.home-view.unwarping{
-  animation:portalSurfaceIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+.home-stage.spatial-resurface{
+  animation:spatialSurfaceIn 0.52s var(--apple-spring) forwards;
 }
-@keyframes portalDiveOut{
-  0%{transform:scale3d(1,1,1);opacity:1}
-  100%{transform:scale3d(1.35,1.35,1);opacity:0}
+@keyframes spatialDiveOut{
+  0%{transform:perspective(1200px) scale3d(1,1,1) translateZ(0);opacity:1;filter:blur(0px)}
+  100%{transform:perspective(1200px) scale3d(1.28,1.28,1.28) translateZ(80px);opacity:0;filter:blur(16px)}
 }
-@keyframes portalSurfaceIn{
-  0%{transform:scale3d(1.15,1.15,1);opacity:0}
-  100%{transform:scale3d(1,1,1);opacity:1}
+@keyframes spatialSurfaceIn{
+  0%{transform:perspective(1200px) scale3d(1.12,1.12,1.12) translateZ(50px);opacity:0;filter:blur(14px)}
+  100%{transform:perspective(1200px) scale3d(1,1,1) translateZ(0);opacity:1;filter:blur(0px)}
 }
 
-.home-nav{display:flex;align-items:center;justify-content:space-between;max-width:1280px;width:100%;margin:0 auto}
-.home-brand{display:flex;align-items:center;gap:14px}
-.home-logo{
-  width:46px;height:46px;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--azure));
-  display:grid;place-items:center;color:var(--accent-ink);box-shadow:0 0 30px rgba(0,245,160,0.4);
-}
-.home-brand strong{font-size:20px;letter-spacing:0.4px;display:block;line-height:1.1}
-.home-brand span{font-size:11px;font-weight:800;letter-spacing:1.8px;text-transform:uppercase;color:var(--accent)}
+.home-container{max-width:1240px;width:100%;margin:0 auto;text-align:center}
 
-.home-hero{
-  max-width:1180px;width:100%;margin:auto;text-align:center;padding:28px 0;
+.corporate-pill{
+  display:inline-flex;align-items:center;gap:10px;padding:8px 20px;border-radius:9999px;
+  background:var(--apple-glass-regular);border:1px solid var(--apple-border);
+  color:var(--apple-text-primary);font-size:11.5px;font-weight:650;letter-spacing:0.08em;
+  text-transform:uppercase;backdrop-filter:var(--apple-blur);-webkit-backdrop-filter:var(--apple-blur);
+  box-shadow:var(--apple-shadow-sm);margin-bottom:26px;
 }
-.nexus-pill{
-  display:inline-flex;align-items:center;gap:10px;padding:7px 18px;border-radius:999px;
-  background:var(--surface);border:1px solid var(--border-strong);
-  color:var(--accent);font-size:12px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;
-  margin-bottom:22px;backdrop-filter:blur(20px);box-shadow:0 8px 24px rgba(0,0,0,0.4);
-}
-.nexus-pill .pulse{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent);animation:pulseDot 2s infinite}
-@keyframes pulseDot{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.6);opacity:0.45}}
+.corporate-pill .sparkle{color:var(--accent-cyan);font-size:14px}
 
-.hero-title{
-  margin:0 auto 16px;font-size:clamp(38px, 6vw, 68px);font-weight:900;letter-spacing:-1.5px;line-height:1.06;
-  background:linear-gradient(135deg, #ffffff 20%, var(--accent) 60%, var(--azure) 100%);
+.hero-main-title{
+  font-size:clamp(40px, 6.2vw, 76px);font-weight:800;letter-spacing:-0.035em;line-height:1.05;
+  margin:0 auto 20px;max-width:1000px;
+  background:linear-gradient(135deg, #ffffff 0%, #f0f2f5 35%, var(--accent-cyan) 65%, var(--accent-blue) 100%);
   -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  background-size:200% 100%;animation:heroSheen 10s ease-in-out infinite alternate;
 }
-.hero-sub{
-  max-width:640px;margin:0 auto 44px;color:var(--muted);font-size:16.5px;line-height:1.65;
+@keyframes heroSheen{
+  0%{background-position:0% 50%}
+  100%{background-position:100% 50%}
 }
 
-/* Glass Portal Cards */
-.portal-grid{
-  display:grid;grid-template-columns:repeat(3, 1fr);gap:24px;text-align:left;
+.hero-description{
+  max-width:720px;margin:0 auto 52px;font-size:17px;font-weight:420;line-height:1.65;
+  letter-spacing:-0.012em;color:var(--apple-text-secondary);
 }
-.portal-card{
-  position:relative;background:var(--surface);border:1px solid var(--border);
-  border-radius:24px;padding:32px 28px;cursor:pointer;backdrop-filter:blur(28px);
-  -webkit-backdrop-filter:blur(28px);box-shadow:var(--shadow);
-  transition:transform 0.32s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s, background 0.3s, box-shadow 0.3s;
-  overflow:hidden;display:flex;flex-direction:column;justify-content:space-between;min-height:240px;
+
+/* ==================== 3D HOLOGRAPHIC GLASS PORTAL CARDS ==================== */
+.portals-matrix{
+  display:grid;grid-template-columns:repeat(3, 1fr);gap:26px;text-align:left;perspective:1000px;
 }
-.portal-card::before{
-  content:'';position:absolute;inset:0;border-radius:24px;padding:1.5px;
-  background:linear-gradient(135deg, rgba(255,255,255,0.2), rgba(0,245,160,0.3), transparent 70%);
+.glass-portal{
+  position:relative;background:var(--apple-glass-regular);
+  border:1px solid var(--apple-border);
+  border-radius:28px;padding:36px 30px;cursor:pointer;
+  backdrop-filter:var(--apple-blur);-webkit-backdrop-filter:var(--apple-blur);
+  box-shadow:var(--apple-shadow-card);
+  display:flex;flex-direction:column;justify-content:space-between;min-height:280px;
+  overflow:hidden;
+  transition:transform 0.35s var(--apple-spring), border-color 0.3s, background 0.3s, box-shadow 0.35s;
+  will-change:transform, box-shadow;
+}
+.glass-portal::before{
+  content:'';position:absolute;inset:0;border-radius:28px;padding:1px;
+  background:linear-gradient(135deg, rgba(255,255,255,0.35), rgba(0, 245, 212, 0.25), transparent 70%);
   -webkit-mask:linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite:xor;mask-composite:exclude;opacity:0.6;transition:opacity 0.3s;
+  -webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none;opacity:0.5;
+  transition:opacity 0.3s;
 }
-.portal-card:hover{
-  transform:translate3d(0,-8px,0) scale3d(1.02,1.02,1);
-  border-color:var(--accent);
-  background:var(--surface-hover);
-  box-shadow:var(--shadow-lg);
+.glass-portal .specular-sheen{
+  position:absolute;inset:0;pointer-events:none;border-radius:28px;
+  background:radial-gradient(circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(255,255,255,0.14) 0%, transparent 60%);
+  opacity:0;transition:opacity 0.3s;
 }
-.portal-card:hover::before{opacity:1}
+.glass-portal:hover{
+  transform:translate3d(0, -10px, 0) scale3d(1.025, 1.025, 1);
+  border-color:var(--apple-border-bright);
+  background:var(--apple-glass-hover);
+  box-shadow:var(--apple-shadow-lg);
+}
+.glass-portal:hover::before{opacity:1}
+.glass-portal:hover .specular-sheen{opacity:1}
 
-.portal-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
-.portal-icon{
-  width:48px;height:48px;border-radius:14px;display:grid;place-items:center;
-  background:var(--accent-soft);color:var(--accent);border:1px solid rgba(0,245,160,0.3);
-  transition:transform 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+.portal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}
+.portal-glyph{
+  width:52px;height:52px;border-radius:16px;display:grid;place-items:center;
+  background:var(--accent-cyan-soft);color:var(--accent-cyan);
+  border:1px solid rgba(0, 245, 212, 0.35);box-shadow:0 0 20px rgba(0, 245, 212, 0.2);
+  transition:transform 0.35s var(--apple-spring);
 }
-.portal-card[data-portal="outbound"] .portal-icon{background:var(--azure-soft);color:var(--azure);border-color:rgba(56,189,248,0.3)}
-.portal-card[data-portal="logs"] .portal-icon{background:rgba(245,158,11,0.12);color:var(--warn);border-color:rgba(245,158,11,0.3)}
-.portal-card:hover .portal-icon{transform:scale3d(1.12,1.12,1) rotate(-4deg)}
-.portal-icon .icon{width:22px;height:22px}
+.glass-portal[data-portal="outbound"] .portal-glyph{
+  background:var(--accent-blue-soft);color:var(--accent-blue);
+  border-color:rgba(10, 132, 255, 0.35);box-shadow:0 0 20px rgba(10, 132, 255, 0.2);
+}
+.glass-portal[data-portal="logs"] .portal-glyph{
+  background:var(--accent-amber-soft);color:var(--accent-amber);
+  border-color:rgba(255, 159, 10, 0.35);box-shadow:0 0 20px rgba(255, 159, 10, 0.2);
+}
+.glass-portal:hover .portal-glyph{transform:scale3d(1.12, 1.12, 1) rotate(-4deg)}
+.portal-glyph svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
-.portal-tag{
-  font-family:var(--mono);font-size:11px;font-weight:800;padding:4px 10px;border-radius:999px;
-  background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--muted);
+.portal-tag-pill{
+  font-family:var(--font-mono);font-size:11px;font-weight:700;padding:5px 12px;border-radius:9999px;
+  background:rgba(255,255,255,0.06);border:1px solid var(--apple-border);color:var(--apple-text-secondary);
 }
-.portal-card h3{margin:0 0 8px;font-size:20px;font-weight:800;color:var(--text)}
-.portal-card p{margin:0 0 22px;font-size:13.5px;color:var(--muted);line-height:1.55}
-.portal-cta{
-  display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:800;
-  color:var(--accent);letter-spacing:0.3px;transition:transform 0.25s;
+.glass-portal h3{
+  margin:0 0 10px;font-size:22px;font-weight:700;letter-spacing:-0.022em;color:var(--apple-text-primary);
 }
-.portal-card[data-portal="outbound"] .portal-cta{color:var(--azure)}
-.portal-card[data-portal="logs"] .portal-cta{color:var(--warn)}
-.portal-card:hover .portal-cta{transform:translate3d(5px,0,0)}
+.glass-portal p{
+  margin:0 0 24px;font-size:14px;color:var(--apple-text-secondary);line-height:1.6;letter-spacing:-0.008em;
+}
+.portal-action{
+  display:inline-flex;align-items:center;gap:9px;font-size:13.5px;font-weight:700;
+  color:var(--accent-cyan);letter-spacing:0.01em;transition:transform 0.25s var(--apple-spring);
+}
+.glass-portal[data-portal="outbound"] .portal-action{color:var(--accent-blue)}
+.glass-portal[data-portal="logs"] .portal-action{color:var(--accent-amber)}
+.glass-portal:hover .portal-action{transform:translate3d(6px, 0, 0)}
+.portal-action svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2}
 
-.home-footer{
-  max-width:1280px;width:100%;margin:0 auto;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;
-  padding-top:20px;border-top:1px solid var(--border);color:var(--muted);font-size:12.5px;
+/* ==================== HOMEPAGE FOOTER ==================== */
+.home-meta-footer{
+  max-width:1240px;width:100%;margin:0 auto;display:flex;align-items:center;justify-content:space-between;
+  flex-wrap:wrap;gap:16px;padding-top:28px;border-top:1px solid var(--apple-border);
+  color:var(--apple-text-secondary);font-size:13px;
 }
-.creator-sig{color:var(--accent);font-weight:800;letter-spacing:0.3px}
-.home-stats{display:flex;gap:24px;font-family:var(--mono)}
-.home-stats b{color:var(--text)}
+.author-credit{
+  font-weight:600;letter-spacing:-0.01em;
+}
+.author-credit b{
+  color:var(--accent-cyan);font-weight:750;letter-spacing:0.02em;
+}
+.system-telemetry{
+  display:flex;align-items:center;gap:24px;font-family:var(--font-mono);font-size:12px;
+}
+.system-telemetry b{color:var(--apple-text-primary)}
 
-/* ==================== WORKSPACE SHELL (LIQUID GLASS) ==================== */
-.app{
-  position:relative;z-index:10;display:grid;grid-template-columns:280px minmax(0,1fr);min-height:100vh;
-  background:rgba(5,5,8,0.78);
-  will-change:transform,opacity;
+/* ==================== WORKSPACE APP SHELL ==================== */
+.workspace-app{
+  position:relative;z-index:10;display:grid;grid-template-columns:300px minmax(0, 1fr);min-height:100vh;
+  background:rgba(4, 5, 8, 0.72);
+  will-change:transform, opacity;
 }
-.app.entering{
-  animation:workspaceEmerge 0.52s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+.workspace-app.spatial-reveal{
+  animation:workspaceRevealIn 0.54s var(--apple-spring) forwards;
 }
-@keyframes workspaceEmerge{
-  0%{opacity:0;transform:scale3d(0.94,0.94,1)}
-  100%{opacity:1;transform:scale3d(1,1,1)}
-}
-
-.sidebar{
-  background:var(--surface);color:var(--muted);display:flex;flex-direction:column;
-  padding:28px 18px;position:sticky;top:0;height:100vh;border-right:1px solid var(--border);
-  backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);
-}
-.brand{display:flex;align-items:center;gap:14px;padding:4px 8px 24px;cursor:pointer}
-.brand-mark{
-  width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--azure));
-  display:grid;place-items:center;color:var(--accent-ink);box-shadow:0 0 24px rgba(0,245,160,0.35);
-}
-.brand-mark .icon{width:22px;height:22px}
-.brand strong{display:block;color:#fff;font-size:18px;letter-spacing:0.3px}
-.brand span{font-size:11px;color:var(--accent);font-weight:800;text-transform:uppercase;letter-spacing:1.1px}
-
-.home-return-btn{
-  display:flex;align-items:center;gap:10px;width:100%;padding:11px 14px;margin-bottom:22px;
-  border:1px solid rgba(0,245,160,0.35);border-radius:12px;background:var(--accent-soft);
-  color:var(--accent);font-weight:700;font-size:13px;cursor:pointer;transition:all 0.25s;
-}
-.home-return-btn:hover{background:rgba(0,245,160,0.2);transform:translate3d(-2px,0,0);box-shadow:0 0 20px rgba(0,245,160,0.2)}
-
-.nav{display:flex;flex-direction:column;gap:8px}
-.nav-label{font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;padding:0 12px 8px;color:var(--muted)}
-.nav-item{
-  display:flex;align-items:center;gap:12px;width:100%;padding:12px 15px;border:1px solid transparent;border-radius:12px;
-  background:transparent;color:var(--muted);font-weight:600;text-align:left;cursor:pointer;
-  transition:all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.nav-item:hover{background:rgba(255,255,255,0.04);color:#fff;transform:translate3d(4px,0,0)}
-.nav-item.active{
-  background:linear-gradient(90deg, rgba(0,245,160,0.15), rgba(56,189,248,0.08));
-  color:#fff;box-shadow:inset 3px 0 0 var(--accent);border-color:rgba(0,245,160,0.3);
-}
-.count{margin-left:auto;min-width:26px;padding:2px 8px;border-radius:999px;background:var(--azure-soft);color:var(--azure);font-size:11px;font-weight:800;text-align:center}
-
-.side-foot{margin-top:auto;padding:18px 12px 0;border-top:1px solid var(--border);font-size:12px;color:var(--muted)}
-.side-foot .lbl{text-transform:uppercase;letter-spacing:1px;font-size:10.5px;color:var(--accent);font-weight:800;margin-bottom:4px}
-.side-foot .author{margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);color:#fff;font-weight:700;font-size:11.5px}
-
-.main{padding:34px 44px 48px;width:100%;max-width:1320px;display:flex;flex-direction:column;min-height:100vh}
-.topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:28px}
-.topbar h1{margin:0;font-size:26px;font-weight:800;letter-spacing:-0.4px;color:var(--text)}
-.topbar p{margin:5px 0 0;color:var(--muted);font-size:14px}
-.status{display:inline-flex;align-items:center;gap:10px;padding:8px 16px;border:1px solid var(--border);border-radius:999px;background:var(--surface);font-size:12.5px;font-weight:700;white-space:nowrap;backdrop-filter:blur(20px)}
-.dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
-.status.ok .dot{background:var(--ok);box-shadow:0 0 0 5px var(--ok-soft), 0 0 12px var(--ok)}
-.status.bad .dot{background:var(--coral);box-shadow:0 0 0 5px var(--coral-soft), 0 0 12px var(--coral)}
-
-.metrics-bar{display:grid;grid-template-columns:repeat(4, 1fr);gap:16px;margin-bottom:28px}
-.metric-card{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:18px 22px;box-shadow:var(--shadow);backdrop-filter:blur(24px);transition:transform 0.25s, border-color 0.25s}
-.metric-card:hover{transform:translate3d(0,-3px,0);border-color:var(--accent)}
-.metric-card .label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px}
-.metric-card .value{font-size:22px;font-weight:800;font-family:var(--mono);color:var(--text)}
-
-/* Staggered Tab Animations */
-.panel{display:none}
-.panel.active{display:block}
-.panel.tab-entering .stagger-item{
-  opacity:0;
-  animation:staggerCardIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-.panel.tab-entering .stagger-item:nth-child(1){animation-delay:0.02s}
-.panel.tab-entering .stagger-item:nth-child(2){animation-delay:0.07s}
-.panel.tab-entering .stagger-item:nth-child(3){animation-delay:0.12s}
-@keyframes staggerCardIn{
-  0%{opacity:0;transform:translate3d(0,16px,0) scale3d(0.985,0.985,1)}
-  100%{opacity:1;transform:translate3d(0,0,0) scale3d(1,1,1)}
+@keyframes workspaceRevealIn{
+  0%{opacity:0;transform:perspective(1200px) scale3d(0.93, 0.93, 0.93) translateZ(-60px);filter:blur(14px)}
+  100%{opacity:1;transform:perspective(1200px) scale3d(1, 1, 1) translateZ(0);filter:blur(0px)}
 }
 
-.card{background:var(--surface);border:1px solid var(--border);border-radius:20px;box-shadow:var(--shadow);margin-bottom:24px;overflow:hidden;backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);will-change:transform,opacity}
-.card-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 26px;border-bottom:1px solid var(--border);background:rgba(255,255,255,0.02)}
-.card-head h2{margin:0;font-size:17px;font-weight:750}
-.card-head p{margin:4px 0 0;color:var(--muted);font-size:13px}
-.card-body{padding:26px}
+/* ==================== WORKSPACE SIDEBAR ==================== */
+.apple-sidebar{
+  background:var(--apple-glass-regular);
+  border-right:1px solid var(--apple-border);
+  backdrop-filter:var(--apple-blur-panel);-webkit-backdrop-filter:var(--apple-blur-panel);
+  display:flex;flex-direction:column;padding:32px 20px;
+  position:sticky;top:0;height:100vh;overflow-y:auto;
+}
+.sidebar-brand{
+  display:flex;align-items:center;gap:14px;padding:4px 8px 24px;cursor:pointer;
+  transition:transform 0.25s var(--apple-spring);
+}
+.sidebar-brand:hover{transform:scale(1.02)}
+.sidebar-logo{
+  width:44px;height:44px;border-radius:14px;
+  background:linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+  display:grid;place-items:center;color:#03140e;box-shadow:0 0 24px rgba(0, 245, 212, 0.35);
+}
+.sidebar-logo svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2.2}
+.sidebar-brand strong{font-size:18px;font-weight:750;letter-spacing:-0.02em;color:#fff;display:block}
+.sidebar-brand span{font-size:10.5px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent-cyan)}
 
-label{display:block;margin-bottom:8px;font-size:11.5px;font-weight:800;color:var(--muted);letter-spacing:0.8px;text-transform:uppercase}
-.field{margin-bottom:20px}
-.field:last-child{margin-bottom:0}
-input,select,textarea{width:100%;background:rgba(3,3,5,0.75);color:var(--text);border:1px solid var(--border);border-radius:12px;padding:11px 16px;font:inherit;transition:border-color 0.2s, box-shadow 0.2s}
-textarea{font-family:var(--mono);font-size:13.5px;resize:vertical;min-height:170px}
-input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);outline:none}
-.input-group{display:flex;align-items:stretch;border:1px solid var(--border);border-radius:12px;background:rgba(3,3,5,0.75);overflow:hidden}
-.input-group:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
-.input-group input{border:0;background:transparent;border-radius:0;font-family:var(--mono);font-size:13.5px;padding:11px 16px}
-.input-group input:focus-visible{outline:none}
-.icon-btn{display:inline-grid;place-items:center;width:46px;flex:none;border:0;border-left:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:all 0.2s}
-.icon-btn:hover{background:var(--accent-soft);color:var(--accent)}
-.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.apple-home-return{
+  display:flex;align-items:center;gap:10px;width:100%;padding:11px 16px;margin-bottom:26px;
+  border:1px solid rgba(0, 245, 212, 0.35);border-radius:14px;background:var(--accent-cyan-soft);
+  color:var(--accent-cyan);font-weight:700;font-size:13px;cursor:pointer;
+  transition:all 0.25s var(--apple-spring);
+}
+.apple-home-return:hover{
+  background:rgba(0, 245, 212, 0.22);transform:translate3d(-2px,0,0);box-shadow:0 0 22px rgba(0, 245, 212, 0.25);
+}
+.apple-home-return svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2}
 
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;padding:11px 22px;border-radius:12px;border:1px solid transparent;font-weight:700;cursor:pointer;white-space:nowrap;transition:transform 0.2s, filter 0.2s, background-color 0.2s}
-.btn-sm{padding:8px 15px;font-size:13px}
-.btn-primary{background:linear-gradient(135deg,var(--accent),#00c482);color:var(--accent-ink);box-shadow:0 4px 18px rgba(0,245,160,0.3);font-weight:800}
-.btn-primary:hover{filter:brightness(1.08);transform:translate3d(0,-2px,0)}
-.btn-secondary{background:rgba(255,255,255,0.06);color:var(--text);border-color:var(--border)}
-.btn-secondary:hover{background:rgba(255,255,255,0.1);transform:translate3d(0,-2px,0)}
-.btn-danger-ghost{background:transparent;color:var(--coral);border-color:var(--border)}
-.btn-danger-ghost:hover{background:var(--coral-soft);border-color:var(--coral)}
-
-.seg{display:inline-flex;padding:5px;gap:6px;background:rgba(3,3,5,0.75);border:1px solid var(--border);border-radius:14px;margin-bottom:24px}
-.seg button{border:0;background:transparent;padding:8px 18px;border-radius:10px;font-weight:700;color:var(--muted);cursor:pointer;transition:all 0.2s}
-.seg button:hover{color:var(--text)}
-.seg button.active{background:var(--surface);color:var(--accent);border:1px solid rgba(0,245,160,0.3);box-shadow:0 4px 12px rgba(0,0,0,0.4)}
-
-.url-bar{display:grid;grid-template-columns:130px minmax(0,1fr) auto;gap:12px;margin-bottom:24px}
-.url-bar select{font-weight:800}
-.url-bar input{font-family:var(--mono);font-size:13.5px}
-.header-row{display:grid;grid-template-columns:1fr 1fr 46px;gap:12px;margin-bottom:12px}
-.header-row .icon-btn{border:1px solid var(--border);border-radius:12px}
-.hint{margin:14px 0 0;color:var(--muted);font-size:13px}
-.hint b{color:var(--text)}
-
-.tag{font-family:var(--mono);font-weight:800;font-size:13px;text-align:center;cursor:default;border:1px solid;user-select:all}
-.tag-blue{color:var(--azure);background:var(--azure-soft);border-color:rgba(56,189,248,0.35)}
-.tag-violet{color:#c084fc;background:rgba(192,132,252,0.12);border-color:rgba(192,132,252,0.35)}
-.tag-amber{color:var(--warn);background:var(--warn-soft);border-color:rgba(245,158,11,0.35)}
-.tag-green{color:var(--accent);background:var(--accent-soft);border-color:rgba(0,245,160,0.35)}
-
-.auth-row{display:grid;grid-template-columns:180px 130px minmax(0,1fr);gap:14px;align-items:end;margin-bottom:16px}
-.auth-row.two{grid-template-columns:180px minmax(0,1fr)}
-.auth-row.opt{grid-template-columns:145px 180px minmax(0,1fr)}
-.auth-row .field{margin-bottom:0}
-.note-cell{padding:11px 0;color:var(--muted);font-size:13px}
-.opt-title{margin:24px 0 12px;font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted)}
-.panel-actions{margin:6px 0 8px}
-
-.toolbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:22px}
-.spacer{flex:1}
-
-.log{background:var(--surface);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);margin-bottom:16px;overflow:hidden;backdrop-filter:blur(24px)}
-.log-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:18px 24px}
-.log-title{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.log-id{font-family:var(--mono);font-size:13px;font-weight:700}
-.log-meta{color:var(--muted);font-size:12.5px}
-.log-actions{display:flex;align-items:center;gap:14px}
-.log-url{padding:0 24px 14px;font-family:var(--mono);font-size:12.5px;color:var(--muted);word-break:break-all}
-.log details{border-top:1px solid var(--border)}
-.log summary{padding:14px 24px;cursor:pointer;color:var(--muted);font-size:13px;font-weight:600;user-select:none}
-.log summary:hover{color:var(--text)}
-.block{padding:0 24px 20px}
-.block-label{margin-bottom:8px;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
-pre{margin:0;padding:18px;background:rgba(3,3,5,0.85);border:1px solid var(--border);border-radius:12px;font:13px/1.6 var(--mono);overflow:auto;max-height:400px;white-space:pre-wrap;word-break:break-word}
-.badge{display:inline-flex;align-items:center;padding:3px 11px;border-radius:999px;font-size:11.5px;font-weight:800}
-.b-info{background:var(--azure-soft);color:var(--azure);border:1px solid rgba(56,189,248,0.35)}
-.b-ok{background:var(--accent-soft);color:var(--accent);border:1px solid rgba(0,245,160,0.35)}
-.b-warn{background:var(--warn-soft);color:var(--warn);border:1px solid rgba(245,158,11,0.35)}
-.b-err{background:var(--coral-soft);color:var(--coral);border:1px solid rgba(251,113,133,0.35)}
-.b-neutral{background:rgba(255,255,255,0.05);color:var(--muted);border:1px solid var(--border)}
-.empty{display:grid;place-items:center;gap:10px;text-align:center;padding:70px 24px;border:1px dashed var(--border);border-radius:18px;color:var(--muted);background:var(--surface)}
-.empty .icon{width:34px;height:34px;color:var(--accent)}
-.empty strong{color:var(--text);font-size:16px}
-
-.workspace-footer{
-  margin-top:auto;padding-top:24px;border-top:1px solid var(--border);
-  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;
-  color:var(--muted);font-size:12.5px;
+.nav-section-label{
+  font-size:11px;font-weight:750;letter-spacing:0.1em;text-transform:uppercase;
+  padding:0 12px 10px;color:var(--apple-text-tertiary);
+}
+.nav-stack{display:flex;flex-direction:column;gap:6px}
+.nav-tab-btn{
+  position:relative;display:flex;align-items:center;gap:12px;width:100%;padding:13px 16px;
+  border:1px solid transparent;border-radius:14px;
+  background:transparent;color:var(--apple-text-secondary);font-weight:600;font-size:13.5px;
+  text-align:left;cursor:pointer;transition:all 0.25s var(--apple-spring);
+}
+.nav-tab-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;transition:transform 0.25s}
+.nav-tab-btn:hover{
+  background:rgba(255,255,255,0.06);color:#fff;transform:translate3d(4px,0,0);
+}
+.nav-tab-btn:active{transform:scale(0.98)}
+.nav-tab-btn.active{
+  background:linear-gradient(90deg, rgba(0, 245, 212, 0.16), rgba(10, 132, 255, 0.08));
+  color:#fff;border-color:rgba(0, 245, 212, 0.35);
+  box-shadow:inset 3px 0 0 var(--accent-cyan), 0 4px 16px rgba(0,0,0,0.25);
+}
+.nav-tab-btn.active svg{color:var(--accent-cyan);transform:scale(1.1)}
+.nav-badge{
+  margin-left:auto;min-width:26px;padding:2px 8px;border-radius:9999px;
+  background:var(--accent-blue-soft);color:var(--accent-blue);font-size:11px;font-weight:800;text-align:center;
 }
 
-.toasts{position:fixed;right:24px;bottom:24px;display:flex;flex-direction:column;gap:10px;z-index:120}
-.toast{min-width:270px;max-width:400px;padding:14px 18px;border-radius:14px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-left:4px solid var(--accent);box-shadow:var(--shadow-lg);font-size:13.5px;backdrop-filter:blur(24px)}
-.toast.success{border-left-color:var(--ok)}
-.toast.error{border-left-color:var(--coral)}
+.sidebar-footer{
+  margin-top:auto;padding-top:20px;border-top:1px solid var(--apple-border);
+  font-size:12px;color:var(--apple-text-secondary);
+}
+.sidebar-footer .status-title{
+  font-size:10.5px;font-weight:750;letter-spacing:0.08em;text-transform:uppercase;color:var(--accent-cyan);
+  margin-bottom:4px;
+}
+.sidebar-signature{
+  margin-top:12px;padding-top:12px;border-top:1px dashed var(--apple-border);
+  color:#fff;font-weight:650;font-size:12px;letter-spacing:-0.01em;
+}
 
-.modal{position:fixed;inset:0;background:rgba(5,5,8,0.85);display:grid;place-items:center;padding:24px;z-index:130;backdrop-filter:blur(16px)}
-.dialog{width:100%;max-width:440px;background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:28px;box-shadow:var(--shadow-lg);backdrop-filter:blur(32px)}
-.dialog h3{margin:0 0 10px;font-size:19px;font-weight:800}
-.dialog p{margin:0 0 24px;color:var(--muted);font-size:14px}
-.dialog .actions{display:flex;justify-content:flex-end;gap:12px}
+/* ==================== WORKSPACE MAIN CONTENT ==================== */
+.workspace-main{
+  padding:40px 48px 56px;width:100%;max-width:1360px;display:flex;flex-direction:column;min-height:100vh;
+}
+.workspace-topbar{
+  display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:32px;
+}
+.workspace-topbar h1{
+  margin:0;font-size:28px;font-weight:750;letter-spacing:-0.025em;color:var(--apple-text-primary);
+}
+.workspace-topbar p{
+  margin:6px 0 0;color:var(--apple-text-secondary);font-size:14.5px;letter-spacing:-0.01em;
+}
 
-@media (max-width:960px){
-  .home-view{padding:20px}
-  .portal-grid{grid-template-columns:1fr}
-  .app{grid-template-columns:1fr}
-  .sidebar{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;gap:12px;padding:16px}
-  .brand{padding:0}.nav-label,.side-foot{display:none}
-  .nav{flex-direction:row;flex-wrap:wrap}
-  .main{padding:24px 18px 60px}
-  .grid-2,.url-bar,.metrics-bar,.auth-row,.auth-row.two,.auth-row.opt{grid-template-columns:1fr}
-  .topbar{flex-direction:column}
+/* Status Pill in Workspace Topbar */
+.connection-pill{
+  display:inline-flex;align-items:center;gap:10px;padding:9px 18px;border:1px solid var(--apple-border);
+  border-radius:9999px;background:var(--apple-glass-regular);backdrop-filter:var(--apple-blur);
+  font-size:12.5px;font-weight:650;letter-spacing:-0.01em;box-shadow:var(--apple-shadow-sm);
+  white-space:nowrap;
+}
+.connection-dot{width:8px;height:8px;border-radius:50%;background:var(--apple-text-tertiary)}
+.connection-pill.online .connection-dot{
+  background:var(--accent-mint);box-shadow:0 0 0 5px var(--accent-mint-soft), 0 0 12px var(--accent-mint);
+}
+.connection-pill.offline .connection-dot{
+  background:var(--accent-coral);box-shadow:0 0 0 5px var(--accent-coral-soft), 0 0 12px var(--accent-coral);
+}
+
+/* ==================== METRIC COUNTER CARDS ==================== */
+.metrics-row{
+  display:grid;grid-template-columns:repeat(4, 1fr);gap:18px;margin-bottom:32px;
+}
+.glass-metric-card{
+  background:var(--apple-glass-regular);border:1px solid var(--apple-border);
+  border-radius:22px;padding:22px 24px;backdrop-filter:var(--apple-blur);-webkit-backdrop-filter:var(--apple-blur);
+  box-shadow:var(--apple-shadow-sm);transition:transform 0.3s var(--apple-spring), border-color 0.3s;
+}
+.glass-metric-card:hover{
+  transform:translate3d(0, -4px, 0);border-color:var(--apple-border-bright);
+}
+.metric-header-lbl{
+  font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:0.08em;
+  color:var(--apple-text-tertiary);margin-bottom:8px;
+}
+.metric-numerical-val{
+  font-size:26px;font-weight:800;font-family:var(--font-mono);letter-spacing:-0.03em;color:#fff;
+}
+
+/* ==================== PANELS & STAGGER ANIMATIONS ==================== */
+.tab-content-panel{display:none}
+.tab-content-panel.active{display:block}
+
+/* Illusion Tab Entrance */
+.tab-content-panel.tab-illusion-in{
+  animation:tabIllusionEmerge 0.44s var(--apple-spring) forwards;
+}
+@keyframes tabIllusionEmerge{
+  0%{opacity:0;transform:perspective(1200px) scale3d(0.95, 0.95, 0.95) translateZ(-40px);filter:blur(10px)}
+  100%{opacity:1;transform:perspective(1200px) scale3d(1, 1, 1) translateZ(0);filter:blur(0px)}
+}
+
+.tab-content-panel.tab-illusion-in .stagger-item{
+  opacity:0;animation:staggerCascadeIn 0.45s var(--apple-spring) forwards;
+}
+.tab-content-panel.tab-illusion-in .stagger-item:nth-child(1){animation-delay:0.03s}
+.tab-content-panel.tab-illusion-in .stagger-item:nth-child(2){animation-delay:0.08s}
+.tab-content-panel.tab-illusion-in .stagger-item:nth-child(3){animation-delay:0.13s}
+.tab-content-panel.tab-illusion-in .stagger-item:nth-child(4){animation-delay:0.18s}
+
+@keyframes staggerCascadeIn{
+  0%{opacity:0;transform:translate3d(0, 18px, 0) scale3d(0.98, 0.98, 1)}
+  100%{opacity:1;transform:translate3d(0, 0, 0) scale3d(1, 1, 1)}
+}
+
+/* ==================== APPLE OS CARDS & FORMS ==================== */
+.apple-card{
+  background:var(--apple-glass-regular);border:1px solid var(--apple-border);
+  border-radius:24px;box-shadow:var(--apple-shadow-card);margin-bottom:26px;overflow:hidden;
+  backdrop-filter:var(--apple-blur);-webkit-backdrop-filter:var(--apple-blur);
+  transition:border-color 0.3s;
+}
+.apple-card-header{
+  display:flex;align-items:center;justify-content:space-between;gap:18px;
+  padding:24px 28px;border-bottom:1px solid var(--apple-border);background:rgba(255,255,255,0.02);
+}
+.apple-card-header h2{margin:0;font-size:18px;font-weight:700;letter-spacing:-0.015em}
+.apple-card-header p{margin:4px 0 0;color:var(--apple-text-secondary);font-size:13.5px}
+.apple-card-body{padding:28px}
+
+.form-label{
+  display:block;margin-bottom:8px;font-size:11.5px;font-weight:750;color:var(--apple-text-secondary);
+  letter-spacing:0.06em;text-transform:uppercase;
+}
+.form-field{margin-bottom:22px}
+.form-field:last-child{margin-bottom:0}
+
+input,select,textarea{
+  width:100%;background:rgba(8, 10, 16, 0.75);color:var(--apple-text-primary);
+  border:1px solid var(--apple-border);border-radius:14px;padding:12px 18px;font:inherit;
+  transition:border-color 0.25s, box-shadow 0.25s, background 0.25s;
+}
+textarea{font-family:var(--font-mono);font-size:13px;resize:vertical;min-height:180px;line-height:1.6}
+input:focus,select:focus,textarea:focus{
+  border-color:var(--accent-cyan);
+  box-shadow:0 0 0 3px var(--accent-cyan-soft), 0 0 16px rgba(0, 245, 212, 0.2);
+  background:rgba(12, 16, 24, 0.85);outline:none;
+}
+.input-glass-group{
+  display:flex;align-items:stretch;border:1px solid var(--apple-border);border-radius:14px;
+  background:rgba(8, 10, 16, 0.75);overflow:hidden;
+  transition:border-color 0.25s, box-shadow 0.25s;
+}
+.input-glass-group:focus-within{
+  border-color:var(--accent-cyan);box-shadow:0 0 0 3px var(--accent-cyan-soft), 0 0 16px rgba(0, 245, 212, 0.2);
+}
+.input-glass-group input{
+  border:0;background:transparent;border-radius:0;font-family:var(--font-mono);font-size:13px;padding:12px 18px;
+}
+.input-glass-group input:focus{box-shadow:none;background:transparent}
+
+.glass-icon-btn{
+  display:inline-grid;place-items:center;width:48px;flex:none;border:0;
+  border-left:1px solid var(--apple-border);background:transparent;color:var(--apple-text-secondary);
+  cursor:pointer;transition:all 0.2s var(--apple-spring);
+}
+.glass-icon-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2}
+.glass-icon-btn:hover{background:var(--accent-cyan-soft);color:var(--accent-cyan)}
+
+/* ==================== APPLE BUTTONS & CONTROLS ==================== */
+.apple-btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:10px;padding:12px 24px;
+  border-radius:14px;border:1px solid transparent;font-weight:700;font-size:13.5px;
+  cursor:pointer;white-space:nowrap;transition:transform 0.2s var(--apple-spring), filter 0.2s, background 0.2s, box-shadow 0.2s;
+}
+.apple-btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2}
+.apple-btn:active{transform:scale(0.97)}
+
+.apple-btn-primary{
+  background:linear-gradient(135deg, var(--accent-cyan), #00c49f);
+  color:#03140e;box-shadow:0 4px 20px rgba(0, 245, 212, 0.35);font-weight:750;
+}
+.apple-btn-primary:hover{filter:brightness(1.08);transform:translate3d(0, -2px, 0);box-shadow:0 6px 26px rgba(0, 245, 212, 0.45)}
+
+.apple-btn-secondary{
+  background:rgba(255,255,255,0.06);color:var(--apple-text-primary);border-color:var(--apple-border);
+}
+.apple-btn-secondary:hover{
+  background:rgba(255,255,255,0.11);border-color:var(--apple-border-bright);transform:translate3d(0, -2px, 0);
+}
+.apple-btn-sm{padding:8px 16px;font-size:12.5px;border-radius:12px}
+
+.apple-btn-danger{
+  background:transparent;color:var(--accent-coral);border-color:var(--apple-border);
+}
+.apple-btn-danger:hover{
+  background:var(--accent-coral-soft);border-color:var(--accent-coral);
+}
+
+/* Apple Segmented Controls (iOS Cupertino Slider) */
+.apple-segmented-track{
+  display:inline-flex;padding:5px;gap:6px;background:rgba(8, 10, 16, 0.75);
+  border:1px solid var(--apple-border);border-radius:9999px;margin-bottom:26px;
+}
+.apple-segmented-track button{
+  border:0;background:transparent;padding:8px 20px;border-radius:9999px;
+  font-weight:650;font-size:13px;color:var(--apple-text-secondary);cursor:pointer;
+  transition:all 0.25s var(--apple-spring);
+}
+.apple-segmented-track button:hover{color:var(--apple-text-primary)}
+.apple-segmented-track button.active{
+  background:var(--apple-glass-hover);color:var(--accent-cyan);
+  border:1px solid rgba(0, 245, 212, 0.35);
+  box-shadow:0 4px 14px rgba(0,0,0,0.4), inset 0 1px 1px rgba(255,255,255,0.2);
+}
+
+/* Method selector bar in Outbound */
+.outbound-url-grid{
+  display:grid;grid-template-columns:140px minmax(0, 1fr) auto;gap:14px;margin-bottom:26px;
+}
+.outbound-url-grid select{font-weight:750}
+.outbound-url-grid input{font-family:var(--font-mono);font-size:13.5px}
+
+.header-row-pair{
+  display:grid;grid-template-columns:1fr 1fr 48px;gap:12px;margin-bottom:12px;
+}
+.header-row-pair .glass-icon-btn{border:1px solid var(--apple-border);border-radius:14px}
+
+.tag-field{font-family:var(--font-mono);font-weight:750;font-size:12.5px;text-align:center;cursor:default;border:1px solid;user-select:all}
+.tag-cyan{color:var(--accent-cyan);background:var(--accent-cyan-soft);border-color:rgba(0, 245, 212, 0.35)}
+.tag-azure{color:var(--accent-blue);background:var(--accent-blue-soft);border-color:rgba(10, 132, 255, 0.35)}
+.tag-purple{color:var(--accent-purple);background:var(--accent-purple-soft);border-color:rgba(191, 90, 242, 0.35)}
+.tag-amber{color:var(--accent-amber);background:var(--accent-amber-soft);border-color:rgba(255, 159, 10, 0.35)}
+
+.auth-config-row{
+  display:grid;grid-template-columns:180px 140px minmax(0, 1fr);gap:16px;align-items:end;margin-bottom:18px;
+}
+.auth-config-row.two-col{grid-template-columns:180px minmax(0, 1fr)}
+.auth-config-row.opt-col{grid-template-columns:150px 180px minmax(0, 1fr)}
+.auth-config-row .form-field{margin-bottom:0}
+.form-hint{margin:14px 0 0;color:var(--apple-text-secondary);font-size:13px}
+.form-hint b{color:var(--apple-text-primary)}
+
+/* ==================== AUDIT TELEMETRY LOGS ==================== */
+.logs-toolbar{
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:24px;
+}
+.flex-spacer{flex:1}
+
+.audit-log-item{
+  background:var(--apple-glass-regular);border:1px solid var(--apple-border);
+  border-radius:20px;box-shadow:var(--apple-shadow-sm);margin-bottom:16px;overflow:hidden;
+  backdrop-filter:var(--apple-blur);-webkit-backdrop-filter:var(--apple-blur);
+  transition:border-color 0.25s, transform 0.25s;
+}
+.audit-log-item:hover{
+  border-color:var(--apple-border-bright);
+}
+.log-card-header{
+  display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:20px 26px;
+}
+.log-badges-cluster{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.log-tracking-id{font-family:var(--font-mono);font-size:13px;font-weight:750;color:#fff}
+.log-timestamp{color:var(--apple-text-secondary);font-size:12.5px}
+.log-endpoint-url{padding:0 26px 14px;font-family:var(--font-mono);font-size:12.5px;color:var(--apple-text-secondary);word-break:break-all}
+.audit-log-item details{border-top:1px solid var(--apple-border)}
+.audit-log-item summary{
+  padding:14px 26px;cursor:pointer;color:var(--apple-text-secondary);font-size:13px;font-weight:600;
+  transition:color 0.2s;
+}
+.audit-log-item summary:hover{color:#fff}
+.log-body-block{padding:0 26px 22px}
+.log-body-label{margin-bottom:8px;font-size:11px;font-weight:750;letter-spacing:0.08em;text-transform:uppercase;color:var(--apple-text-tertiary)}
+
+pre{
+  margin:0;padding:20px;background:rgba(6, 8, 12, 0.85);border:1px solid var(--apple-border);
+  border-radius:14px;font:13px/1.6 var(--font-mono);overflow:auto;max-height:420px;white-space:pre-wrap;word-break:break-word;
+}
+
+.apple-pill-badge{
+  display:inline-flex;align-items:center;padding:4px 12px;border-radius:9999px;font-size:11.5px;font-weight:750;
+}
+.badge-info{background:var(--accent-blue-soft);color:var(--accent-blue);border:1px solid rgba(10, 132, 255, 0.35)}
+.badge-success{background:var(--accent-mint-soft);color:var(--accent-mint);border:1px solid rgba(48, 209, 88, 0.35)}
+.badge-warning{background:var(--accent-amber-soft);color:var(--accent-amber);border:1px solid rgba(255, 159, 10, 0.35)}
+.badge-danger{background:var(--accent-coral-soft);color:var(--accent-coral);border:1px solid rgba(255, 69, 58, 0.35)}
+.badge-neutral{background:rgba(255,255,255,0.06);color:var(--apple-text-secondary);border:1px solid var(--apple-border)}
+
+.empty-telemetry{
+  display:grid;place-items:center;gap:12px;text-align:center;padding:80px 24px;
+  border:1px dashed var(--apple-border);border-radius:24px;color:var(--apple-text-secondary);
+  background:var(--apple-glass-regular);backdrop-filter:var(--apple-blur);
+}
+.empty-telemetry svg{width:38px;height:38px;color:var(--accent-cyan);fill:none;stroke:currentColor;stroke-width:1.8}
+.empty-telemetry strong{color:var(--apple-text-primary);font-size:17px;font-weight:700}
+
+/* ==================== TOASTS & MODAL DIALOGS ==================== */
+.toast-container{position:fixed;right:28px;bottom:28px;display:flex;flex-direction:column;gap:12px;z-index:120}
+.apple-toast{
+  min-width:280px;max-width:420px;padding:16px 20px;border-radius:16px;
+  background:var(--apple-glass-thick);color:var(--apple-text-primary);
+  border:1px solid var(--apple-border-bright);border-left:4px solid var(--accent-cyan);
+  box-shadow:var(--apple-shadow-lg);font-size:13.5px;backdrop-filter:var(--apple-blur);
+  animation:toastSlideIn 0.35s var(--apple-spring);
+}
+@keyframes toastSlideIn{
+  0%{opacity:0;transform:translate3d(0, 20px, 0) scale(0.95)}
+  100%{opacity:1;transform:translate3d(0, 0, 0) scale(1)}
+}
+.apple-toast.success{border-left-color:var(--accent-mint)}
+.apple-toast.error{border-left-color:var(--accent-coral)}
+
+.apple-modal-overlay{
+  position:fixed;inset:0;background:rgba(3, 4, 7, 0.85);display:grid;place-items:center;
+  padding:24px;z-index:130;backdrop-filter:blur(20px);
+}
+.apple-modal-sheet{
+  width:100%;max-width:460px;background:var(--apple-glass-thick);border:1px solid var(--apple-border-bright);
+  border-radius:28px;padding:32px;box-shadow:var(--apple-shadow-lg);backdrop-filter:var(--apple-blur-panel);
+  animation:modalSpringUp 0.38s var(--apple-spring);
+}
+@keyframes modalSpringUp{
+  0%{opacity:0;transform:translate3d(0, 24px, 0) scale(0.94)}
+  100%{opacity:1;transform:translate3d(0, 0, 0) scale(1)}
+}
+.apple-modal-sheet h3{margin:0 0 10px;font-size:20px;font-weight:750;letter-spacing:-0.02em}
+.apple-modal-sheet p{margin:0 0 28px;color:var(--apple-text-secondary);font-size:14px;line-height:1.6}
+.modal-btn-row{display:flex;justify-content:flex-end;gap:12px}
+
+@media (max-width:980px){
+  .home-stage{padding:70px 20px 24px}
+  .portals-matrix{grid-template-columns:1fr}
+  .workspace-app{grid-template-columns:1fr}
+  .apple-sidebar{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;gap:12px;padding:16px}
+  .nav-section-label,.sidebar-footer{display:none}
+  .nav-stack{flex-direction:row;flex-wrap:wrap}
+  .workspace-main{padding:24px 18px 60px}
+  .metrics-row,.outbound-url-grid,.auth-config-row,.auth-config-row.two-col,.auth-config-row.opt-col{grid-template-columns:1fr}
+  .workspace-topbar{flex-direction:column}
 }
 </style>
 </head>
 <body>
-<div class="ambient-glow"></div>
+
+<!-- Ambient Liquid Aurora Layers -->
+<div class="ambient-scene">
+  <div class="aurora-orb aurora-1"></div>
+  <div class="aurora-orb aurora-2"></div>
+  <div class="aurora-orb aurora-3"></div>
+  <div class="aurora-orb aurora-4"></div>
+</div>
+
+<!-- SVG Icon Symbols -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <symbol id="i-in" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
   <symbol id="i-out" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></symbol>
@@ -679,339 +1015,369 @@ pre{margin:0;padding:18px;background:rgba(3,3,5,0.85);border:1px solid var(--bor
   <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></symbol>
 </svg>
 
-<!-- Dynamic Glass Web Canvas -->
+<!-- 60FPS Interactive Spider Web Simulation Canvas -->
 <canvas id="webCanvas"></canvas>
-<div id="warpVignette"></div>
 
-<!-- ==================== HOMEPAGE VIEW ==================== -->
-<section id="homeView" class="home-view">
-  <header class="home-nav">
-    <div class="home-brand">
-      <div class="home-logo"><svg class="icon"><use href="#i-web"/></svg></div>
-      <div>
-        <strong>NexusPulse</strong>
-        <span>Enterprise Glass</span>
-      </div>
+<!-- Optical Illusion Refractive Flare Overlay -->
+<div id="illusionOverlay"></div>
+
+<!-- Top Apple OS Vision Capsule Status Bar -->
+<header class="apple-status-bar">
+  <div class="apple-os-badge">
+    <div class="apple-logo-glyph"><svg style="width:12px;height:12px;fill:currentColor" viewBox="0 0 24 24"><use href="#i-web"/></svg></div>
+    <span>OmniBridge Pro</span>
+  </div>
+  <div class="apple-divider"></div>
+  <div class="apple-live-clock" id="systemClock">--:--:--</div>
+  <div class="apple-divider"></div>
+  <div class="apple-pill-status">
+    <span class="apple-ping-dot"></span>
+    <span id="statusBarGateway">ServiceOS 26 · Active</span>
+  </div>
+</header>
+
+<!-- ==================== HOMEPAGE: CORPORATE APPLE OS DESIGN ==================== -->
+<section id="homeView" class="home-stage">
+  <div class="home-container">
+    <div class="corporate-pill">
+      <span class="sparkle">✦</span>
+      <span>Enterprise ServiceNow Integration Architecture · System 26</span>
     </div>
-    <div class="status" id="homeStatusPill"><span class="dot"></span><span id="homeStatusText">Syncing gateway…</span></div>
-  </header>
 
-  <div class="home-hero">
-    <div class="nexus-pill"><span class="pulse"></span>Enterprise ServiceNow Integration Gateway</div>
-    <h1 class="hero-title">NexusPulse · Enterprise Glass</h1>
-    <p class="hero-sub">High-performance enterprise workspace designed for seamless webhook ingestion, REST API execution, and live audit telemetry.</p>
+    <h1 class="hero-main-title">OmniBridge Pro · Enterprise Integration OS</h1>
+    <p class="hero-description">
+      Engineered for mission-critical webhook ingestion, automated Table API dispatch, and zero-latency cryptographic audit telemetry with Apple OS spatial ergonomics.
+    </p>
 
-    <div class="portal-grid">
-      <article class="portal-card" data-portal="inbound" tabindex="0" role="button">
+    <div class="portals-matrix">
+      <!-- Inbound Portal -->
+      <article class="glass-portal" data-portal="inbound" tabindex="0" role="button">
+        <div class="specular-sheen"></div>
         <div>
-          <div class="portal-top">
-            <div class="portal-icon"><svg class="icon"><use href="#i-in"/></svg></div>
-            <span class="portal-tag">ALL METHODS</span>
+          <div class="portal-header">
+            <div class="portal-glyph"><svg><use href="#i-in"/></svg></div>
+            <span class="portal-tag-pill">ALL HTTP METHODS</span>
           </div>
-          <h3>Inbound Webhook Hub</h3>
-          <p>Capture ServiceNow GET, POST, PUT, PATCH, and DELETE payloads on a secure endpoint URL with multi-auth verification.</p>
+          <h3>Inbound Ingestion Gateway</h3>
+          <p>High-throughput webhook listener supporting GET, POST, PUT, PATCH, and DELETE with automated cryptographic token rotation.</p>
         </div>
-        <div class="portal-cta">Open Inbound Hub <svg class="icon"><use href="#i-arrow"/></svg></div>
+        <div class="portal-action">Launch Gateway <svg><use href="#i-arrow"/></svg></div>
       </article>
 
-      <article class="portal-card" data-portal="outbound" tabindex="0" role="button">
+      <!-- Outbound Portal -->
+      <article class="glass-portal" data-portal="outbound" tabindex="0" role="button">
+        <div class="specular-sheen"></div>
         <div>
-          <div class="portal-top">
-            <div class="portal-icon"><svg class="icon"><use href="#i-out"/></svg></div>
-            <span class="portal-tag">REST CLIENT</span>
+          <div class="portal-header">
+            <div class="portal-glyph"><svg><use href="#i-out"/></svg></div>
+            <span class="portal-tag-pill">REST ENGINE</span>
           </div>
-          <h3>Outbound PDI Client</h3>
-          <p>Dispatch authenticated Table API requests directly to your ServiceNow instance using Basic, OAuth 2.0 Bearer, or API keys.</p>
+          <h3>Outbound REST Dispatcher</h3>
+          <p>Authenticated ServiceNow Table API client supporting OAuth 2.0 Bearer, Basic Auth, and custom headers with live schema dispatch.</p>
         </div>
-        <div class="portal-cta">Open Outbound Client <svg class="icon"><use href="#i-arrow"/></svg></div>
+        <div class="portal-action">Open Dispatcher <svg><use href="#i-arrow"/></svg></div>
       </article>
 
-      <article class="portal-card" data-portal="logs" tabindex="0" role="button">
+      <!-- Logs Portal -->
+      <article class="glass-portal" data-portal="logs" tabindex="0" role="button">
+        <div class="specular-sheen"></div>
         <div>
-          <div class="portal-top">
-            <div class="portal-icon"><svg class="icon"><use href="#i-list"/></svg></div>
-            <span class="portal-tag" id="homeLogBadge">0 EVENTS</span>
+          <div class="portal-header">
+            <div class="portal-glyph"><svg><use href="#i-list"/></svg></div>
+            <span class="portal-tag-pill" id="homeEventsBadge">0 EVENTS</span>
           </div>
-          <h3>Live Execution Logs</h3>
-          <p>Inspect real-time request headers, payloads, status codes, and latency telemetry across all active integrations.</p>
+          <h3>Audit &amp; Telemetry Stream</h3>
+          <p>Real-time packet inspection tracking roundtrip latency, HTTP status codes, and bidirectional payload telemetry across all active integrations.</p>
         </div>
-        <div class="portal-cta">Open Audit Stream <svg class="icon"><use href="#i-arrow"/></svg></div>
+        <div class="portal-action">Inspect Telemetry <svg><use href="#i-arrow"/></svg></div>
       </article>
     </div>
   </div>
 
-  <footer class="home-footer">
-    <div>Designed &amp; Engineered by <span class="creator-sig">Chadaram Veera Pavan</span></div>
-    <div class="home-stats">
-      <span>TRAFFIC: <b id="homeStatTotal">0</b></span>
-      <span>UPTIME: <b id="homeStatUptime">0s</b></span>
+  <footer class="home-meta-footer">
+    <div class="author-credit">
+      Engineered &amp; Designed by <b>Chadaram Veera Pavan</b>
+    </div>
+    <div class="system-telemetry">
+      <span>TRAFFIC: <b id="statTotalTraffic">0</b></span>
+      <span>UPTIME: <b id="statSystemUptime">0s</b></span>
+      <span>SECURITY: <b style="color:var(--accent-mint)">TLS 1.3</b></span>
     </div>
   </footer>
 </section>
 
-<!-- ==================== WORKSPACE VIEW ==================== -->
-<div id="workspaceView" class="app" hidden>
-  <aside class="sidebar">
-    <div class="brand" id="brandHomeBtn" title="Return to NexusPulse Homepage">
-      <div class="brand-mark"><svg class="icon"><use href="#i-web"/></svg></div>
-      <div><strong>NexusPulse</strong><span>Enterprise Glass</span></div>
+<!-- ==================== WORKSPACE APP SHELL ==================== -->
+<div id="workspaceView" class="workspace-app" hidden>
+  <aside class="apple-sidebar">
+    <div class="sidebar-brand" id="brandHomeBtn" title="Return to OmniBridge Pro Homepage">
+      <div class="sidebar-logo"><svg><use href="#i-web"/></svg></div>
+      <div><strong>OmniBridge Pro</strong><span>Enterprise OS</span></div>
     </div>
 
-    <button type="button" class="home-return-btn" id="returnHomeBtn">
-      <svg class="icon"><use href="#i-home"/></svg>NexusPulse Home
+    <button type="button" class="apple-home-return" id="returnHomeBtn">
+      <svg><use href="#i-home"/></svg>OmniBridge Overview
     </button>
 
-    <div class="nav-label">Workspace Modules</div>
-    <nav class="nav" aria-label="Primary">
-      <button type="button" class="nav-item active" data-panel="inbound"><svg class="icon"><use href="#i-in"/></svg>Inbound Webhook</button>
-      <button type="button" class="nav-item" data-panel="outbound"><svg class="icon"><use href="#i-out"/></svg>Outbound Client</button>
-      <button type="button" class="nav-item" data-panel="logs"><svg class="icon"><use href="#i-list"/></svg>Execution Logs<span class="count" id="logCount">0</span></button>
+    <div class="nav-section-label">Enterprise Modules</div>
+    <nav class="nav-stack" aria-label="Modules Navigation">
+      <button type="button" class="nav-tab-btn active" data-panel="inbound"><svg><use href="#i-in"/></svg>Inbound Webhook</button>
+      <button type="button" class="nav-tab-btn" data-panel="outbound"><svg><use href="#i-out"/></svg>Outbound Client</button>
+      <button type="button" class="nav-tab-btn" data-panel="logs"><svg><use href="#i-list"/></svg>Telemetry &amp; Audit<span class="nav-badge" id="sidebarLogCount">0</span></button>
     </nav>
-    <div class="side-foot">
-      <div class="lbl">Gateway Status</div>
-      <div>Universal listener active (All HTTP Methods).</div>
-      <div class="author">By Chadaram Veera Pavan</div>
+
+    <div class="sidebar-footer">
+      <div class="status-title">System Status</div>
+      <div>Universal HTTP gateway active across all endpoints.</div>
+      <div class="sidebar-signature">By Chadaram Veera Pavan</div>
     </div>
   </aside>
 
-  <main class="main">
-    <header class="topbar">
-      <div><h1 id="pageTitle"></h1><p id="pageSub"></p></div>
-      <div class="status" id="statusPill"><span class="dot"></span><span id="statusText">Checking gateway…</span></div>
+  <main class="workspace-main">
+    <header class="workspace-topbar">
+      <div><h1 id="pageTitle">Inbound Webhook Hub</h1><p id="pageSub">Receive ServiceNow payloads on a secure endpoint URL.</p></div>
+      <div class="connection-pill online" id="connectionPill"><span class="connection-dot"></span><span id="connectionText">Gateway Online</span></div>
     </header>
 
-    <div class="metrics-bar">
-      <div class="metric-card">
-        <div class="label">Total Requests</div>
-        <div class="value" id="metricTotal">0</div>
+    <div class="metrics-row">
+      <div class="glass-metric-card">
+        <div class="metric-header-lbl">Total Packets</div>
+        <div class="metric-numerical-val" id="metricTotal">0</div>
       </div>
-      <div class="metric-card">
-        <div class="label">Success Rate</div>
-        <div class="value" id="metricSuccess">100%</div>
+      <div class="glass-metric-card">
+        <div class="metric-header-lbl">Success SLA</div>
+        <div class="metric-numerical-val" id="metricSuccess">100%</div>
       </div>
-      <div class="metric-card">
-        <div class="label">Avg Latency</div>
-        <div class="value" id="metricLatency">0 ms</div>
+      <div class="glass-metric-card">
+        <div class="metric-header-lbl">Roundtrip Latency</div>
+        <div class="metric-numerical-val" id="metricLatency">0 ms</div>
       </div>
-      <div class="metric-card">
-        <div class="label">Security State</div>
-        <div class="value" id="metricSession">Secured</div>
+      <div class="glass-metric-card">
+        <div class="metric-header-lbl">Security Realm</div>
+        <div class="metric-numerical-val" id="metricSession" style="color:var(--accent-mint)">Secured</div>
       </div>
     </div>
 
-    <!-- Inbound Panel -->
-    <section id="panel-inbound" class="panel active">
-      <div class="card stagger-item">
-        <div class="card-head"><div><h2>Inbound Webhook Endpoint URL</h2><p>Secure endpoint URL supporting GET, POST, PUT, PATCH, and DELETE methods.</p></div></div>
-        <div class="card-body">
-          <div class="field">
-            <label for="inboundUrlBox">Endpoint URL</label>
-            <div class="input-group">
+    <!-- Inbound Module Panel -->
+    <section id="panel-inbound" class="tab-content-panel active">
+      <div class="apple-card stagger-item">
+        <div class="apple-card-header">
+          <div><h2>Inbound Webhook Endpoint URL</h2><p>Cryptographically monitored URL endpoint accepting GET, POST, PUT, PATCH, and DELETE payloads.</p></div>
+        </div>
+        <div class="apple-card-body">
+          <div class="form-field">
+            <label class="form-label" for="inboundUrlBox">HTTPS Endpoint URL</label>
+            <div class="input-glass-group">
               <input type="text" id="inboundUrlBox" readonly spellcheck="false">
-              <button type="button" class="icon-btn" data-copy="inboundUrlBox" data-label="Endpoint URL" title="Copy" aria-label="Copy endpoint URL"><svg class="icon"><use href="#i-copy"/></svg></button>
+              <button type="button" class="glass-icon-btn" data-copy="inboundUrlBox" data-label="Endpoint URL" title="Copy URL" aria-label="Copy endpoint URL"><svg><use href="#i-copy"/></svg></button>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="card stagger-item">
-        <div class="card-head">
-          <div><h2>Authentication Credentials</h2><p>Cryptographically secure tokens rotating on demand. Transmitted securely via HTTP headers.</p></div>
-          <button type="button" class="btn btn-secondary btn-sm" id="rotateBtn"><svg class="icon"><use href="#i-refresh"/></svg>Rotate Credentials</button>
+      <div class="apple-card stagger-item">
+        <div class="apple-card-header">
+          <div><h2>Authentication &amp; Security Credentials</h2><p>Zero-trust cryptographic tokens rotated on demand. Transmitted securely via standard HTTP headers.</p></div>
+          <button type="button" class="apple-btn apple-btn-secondary apple-btn-sm" id="rotateBtn"><svg><use href="#i-refresh"/></svg>Rotate Credentials</button>
         </div>
-        <div class="card-body">
-          <div class="seg" role="tablist" aria-label="Authentication method">
+        <div class="apple-card-body">
+          <div class="apple-segmented-track" role="tablist" aria-label="Authentication Scheme">
             <button type="button" class="active" data-tab-group="cred" data-tab-target="cred-bearer">Bearer Token</button>
             <button type="button" data-tab-group="cred" data-tab-target="cred-basic">Basic Auth</button>
             <button type="button" data-tab-group="cred" data-tab-target="cred-key">API Key</button>
             <button type="button" data-tab-group="cred" data-tab-target="cred-oauth">OAuth 2.0</button>
           </div>
 
-          <div class="tab-panel" data-panel-group="cred" id="cred-bearer">
-            <div class="auth-row">
-              <div class="field">
-                <label for="bearerHeaderName">Header</label>
-                <input type="text" id="bearerHeaderName" class="tag tag-blue" value="Authorization" readonly aria-readonly="true" spellcheck="false">
+          <!-- Bearer Token -->
+          <div class="cred-sub-panel" data-panel-group="cred" id="cred-bearer">
+            <div class="auth-config-row">
+              <div class="form-field">
+                <label class="form-label" for="bearerHeaderName">HTTP Header</label>
+                <input type="text" id="bearerHeaderName" class="tag-field tag-azure" value="Authorization" readonly>
               </div>
-              <div class="field">
-                <label for="bearerScheme">Scheme</label>
-                <input type="text" id="bearerScheme" class="tag tag-violet" value="Bearer" readonly aria-readonly="true" spellcheck="false">
+              <div class="form-field">
+                <label class="form-label" for="bearerScheme">Auth Scheme</label>
+                <input type="text" id="bearerScheme" class="tag-field tag-purple" value="Bearer" readonly>
               </div>
-              <div class="field">
-                <label for="bearerBox">Token</label>
-                <div class="input-group">
+              <div class="form-field">
+                <label class="form-label" for="bearerBox">Cryptographic Token</label>
+                <div class="input-glass-group">
                   <input type="password" id="bearerBox" readonly autocomplete="new-password" spellcheck="false" placeholder="Loading…">
-                  <button type="button" class="icon-btn" data-reveal="bearerBox" title="Show / hide" aria-label="Show or hide token"><svg class="icon"><use href="#i-eye"/></svg></button>
-                  <button type="button" class="icon-btn" data-copy="bearerBox" data-label="Bearer token" title="Copy token" aria-label="Copy token"><svg class="icon"><use href="#i-copy"/></svg></button>
+                  <button type="button" class="glass-icon-btn" data-reveal="bearerBox" title="Toggle visibility" aria-label="Toggle token visibility"><svg><use href="#i-eye"/></svg></button>
+                  <button type="button" class="glass-icon-btn" data-copy="bearerBox" data-label="Bearer token" title="Copy token" aria-label="Copy token"><svg><use href="#i-copy"/></svg></button>
                 </div>
               </div>
             </div>
-            <div class="panel-actions">
-              <button type="button" class="btn btn-secondary btn-sm" data-copy-header><svg class="icon"><use href="#i-copy"/></svg>Copy Header Value</button>
+            <div style="margin-top:8px">
+              <button type="button" class="apple-btn apple-btn-secondary apple-btn-sm" data-copy-header><svg><use href="#i-copy"/></svg>Copy Header String</button>
             </div>
-            <p class="hint">In ServiceNow REST Message, add an HTTP header named <b>Authorization</b> with value <b>Bearer &lt;token&gt;</b>.</p>
+            <p class="form-hint">In ServiceNow REST Message, configure an HTTP Header named <b>Authorization</b> with value <b>Bearer &lt;token&gt;</b>.</p>
           </div>
 
-          <div class="tab-panel" data-panel-group="cred" id="cred-basic" hidden>
-            <div class="grid-2">
-              <div class="field">
-                <label for="basicUserBox">Username (Permanent)</label>
-                <div class="input-group">
+          <!-- Basic Auth -->
+          <div class="cred-sub-panel" data-panel-group="cred" id="cred-basic" hidden>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+              <div class="form-field">
+                <label class="form-label" for="basicUserBox">Username</label>
+                <div class="input-glass-group">
                   <input type="text" id="basicUserBox" readonly spellcheck="false" placeholder="Loading…">
-                  <button type="button" class="icon-btn" data-copy="basicUserBox" data-label="Username" title="Copy" aria-label="Copy username"><svg class="icon"><use href="#i-copy"/></svg></button>
+                  <button type="button" class="glass-icon-btn" data-copy="basicUserBox" data-label="Username" title="Copy"><svg><use href="#i-copy"/></svg></button>
                 </div>
               </div>
-              <div class="field">
-                <label for="basicPassBox">Password</label>
-                <div class="input-group">
+              <div class="form-field">
+                <label class="form-label" for="basicPassBox">Password</label>
+                <div class="input-glass-group">
                   <input type="password" id="basicPassBox" readonly autocomplete="new-password" spellcheck="false" placeholder="Loading…">
-                  <button type="button" class="icon-btn" data-reveal="basicPassBox" title="Show / hide" aria-label="Show or hide password"><svg class="icon"><use href="#i-eye"/></svg></button>
-                  <button type="button" class="icon-btn" data-copy="basicPassBox" data-label="Password" title="Copy" aria-label="Copy password"><svg class="icon"><use href="#i-copy"/></svg></button>
+                  <button type="button" class="glass-icon-btn" data-reveal="basicPassBox" title="Show/Hide"><svg><use href="#i-eye"/></svg></button>
+                  <button type="button" class="glass-icon-btn" data-copy="basicPassBox" data-label="Password" title="Copy"><svg><use href="#i-copy"/></svg></button>
                 </div>
               </div>
             </div>
-            <p class="hint">In ServiceNow, set REST Message Authentication type to <b>Basic</b>.</p>
+            <p class="form-hint">In ServiceNow, set REST Message Authentication type to <b>Basic</b>.</p>
           </div>
 
-          <div class="tab-panel" data-panel-group="cred" id="cred-key" hidden>
-            <div class="field">
-              <label for="apiKeyBox">API Key</label>
-              <div class="input-group">
+          <!-- API Key -->
+          <div class="cred-sub-panel" data-panel-group="cred" id="cred-key" hidden>
+            <div class="form-field">
+              <label class="form-label" for="apiKeyBox">Secret API Key</label>
+              <div class="input-glass-group">
                 <input type="password" id="apiKeyBox" readonly autocomplete="new-password" spellcheck="false" placeholder="Loading…">
-                <button type="button" class="icon-btn" data-reveal="apiKeyBox" title="Show / hide" aria-label="Show or hide API key"><svg class="icon"><use href="#i-eye"/></svg></button>
-                <button type="button" class="icon-btn" data-copy="apiKeyBox" data-label="API key" title="Copy" aria-label="Copy API key"><svg class="icon"><use href="#i-copy"/></svg></button>
+                <button type="button" class="glass-icon-btn" data-reveal="apiKeyBox" title="Show/Hide"><svg><use href="#i-eye"/></svg></button>
+                <button type="button" class="glass-icon-btn" data-copy="apiKeyBox" data-label="API key" title="Copy"><svg><use href="#i-copy"/></svg></button>
               </div>
             </div>
-            <div class="opt-title">Header Authentication (Secure & Recommended)</div>
-            <div class="auth-row opt">
-              <div class="field">
-                <label for="keyViaHeader">Delivery</label>
-                <input type="text" id="keyViaHeader" class="tag tag-amber" value="HTTP Header" readonly aria-readonly="true">
+            <div class="auth-config-row opt-col">
+              <div class="form-field">
+                <label class="form-label" for="keyViaHeader">Delivery Mode</label>
+                <input type="text" id="keyViaHeader" class="tag-field tag-amber" value="HTTP Header" readonly>
               </div>
-              <div class="field">
-                <label for="keyHeaderName">Header Name</label>
-                <input type="text" id="keyHeaderName" class="tag tag-green" value="x-sn-apikey" readonly aria-readonly="true" spellcheck="false">
+              <div class="form-field">
+                <label class="form-label" for="keyHeaderName">Header Name</label>
+                <input type="text" id="keyHeaderName" class="tag-field tag-cyan" value="x-sn-apikey" readonly spellcheck="false">
               </div>
-              <div class="note-cell">Pass key securely in header. URLs remain completely clean.</div>
+              <div style="padding:12px 0;color:var(--apple-text-secondary);font-size:13px">Headers ensure URL parameters remain clean and untampered.</div>
             </div>
-            <p class="hint">In ServiceNow, add <b>x-sn-apikey</b> as an HTTP header on your REST message.</p>
+            <p class="form-hint">In ServiceNow, add <b>x-sn-apikey</b> as an HTTP header in your REST message configuration.</p>
           </div>
 
-          <div class="tab-panel" data-panel-group="cred" id="cred-oauth" hidden>
-            <div class="auth-row two">
-              <div class="field">
-                <label for="oauthGrant">Grant Type</label>
-                <input type="text" id="oauthGrant" class="tag tag-violet" value="client_credentials" readonly aria-readonly="true" spellcheck="false">
+          <!-- OAuth 2.0 -->
+          <div class="cred-sub-panel" data-panel-group="cred" id="cred-oauth" hidden>
+            <div class="auth-config-row two-col">
+              <div class="form-field">
+                <label class="form-label" for="oauthGrant">OAuth Grant Type</label>
+                <input type="text" id="oauthGrant" class="tag-field tag-purple" value="client_credentials" readonly>
               </div>
-              <div class="field">
-                <label for="oauthUrlBox">Token URL</label>
-                <div class="input-group">
+              <div class="form-field">
+                <label class="form-label" for="oauthUrlBox">Token URL</label>
+                <div class="input-glass-group">
                   <input type="text" id="oauthUrlBox" readonly spellcheck="false">
-                  <button type="button" class="icon-btn" data-copy="oauthUrlBox" data-label="Token URL" title="Copy" aria-label="Copy token URL"><svg class="icon"><use href="#i-copy"/></svg></button>
+                  <button type="button" class="glass-icon-btn" data-copy="oauthUrlBox" data-label="Token URL" title="Copy"><svg><use href="#i-copy"/></svg></button>
                 </div>
               </div>
             </div>
-            <div class="grid-2">
-              <div class="field">
-                <label for="oauthIdBox">Client ID</label>
-                <div class="input-group">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+              <div class="form-field">
+                <label class="form-label" for="oauthIdBox">Client ID</label>
+                <div class="input-glass-group">
                   <input type="text" id="oauthIdBox" readonly spellcheck="false" placeholder="Loading…">
-                  <button type="button" class="icon-btn" data-copy="oauthIdBox" data-label="Client ID" title="Copy" aria-label="Copy client ID"><svg class="icon"><use href="#i-copy"/></svg></button>
+                  <button type="button" class="glass-icon-btn" data-copy="oauthIdBox" data-label="Client ID" title="Copy"><svg><use href="#i-copy"/></svg></button>
                 </div>
               </div>
-              <div class="field">
-                <label for="oauthSecretBox">Client Secret</label>
-                <div class="input-group">
+              <div class="form-field">
+                <label class="form-label" for="oauthSecretBox">Client Secret</label>
+                <div class="input-glass-group">
                   <input type="password" id="oauthSecretBox" readonly autocomplete="new-password" spellcheck="false" placeholder="Loading…">
-                  <button type="button" class="icon-btn" data-reveal="oauthSecretBox" title="Show / hide" aria-label="Show or hide client secret"><svg class="icon"><use href="#i-eye"/></svg></button>
-                  <button type="button" class="icon-btn" data-copy="oauthSecretBox" data-label="Client secret" title="Copy" aria-label="Copy client secret"><svg class="icon"><use href="#i-copy"/></svg></button>
+                  <button type="button" class="glass-icon-btn" data-reveal="oauthSecretBox" title="Show/Hide"><svg><use href="#i-eye"/></svg></button>
+                  <button type="button" class="glass-icon-btn" data-copy="oauthSecretBox" data-label="Client secret" title="Copy"><svg><use href="#i-copy"/></svg></button>
                 </div>
               </div>
             </div>
-            <p class="hint">In ServiceNow, set Authentication type to <b>OAuth 2.0</b> pointing to this Token URL.</p>
+            <p class="form-hint">In ServiceNow, set Authentication type to <b>OAuth 2.0</b> targeting this Token URL.</p>
           </div>
         </div>
       </div>
 
-      <div class="card stagger-item">
-        <div class="card-head">
-          <div><h2>Quick Test cURL</h2><p>Ready-to-run cURL command for your selected auth method.</p></div>
-          <button type="button" class="btn btn-secondary btn-sm" data-copy="curlBox" data-label="cURL command"><svg class="icon"><use href="#i-copy"/></svg>Copy</button>
+      <div class="apple-card stagger-item">
+        <div class="apple-card-header">
+          <div><h2>Quick Test cURL</h2><p>Terminal-ready command configured for the currently selected authentication scheme.</p></div>
+          <button type="button" class="apple-btn apple-btn-secondary apple-btn-sm" data-copy="curlBox" data-label="cURL command"><svg><use href="#i-copy"/></svg>Copy cURL</button>
         </div>
-        <div class="card-body"><pre id="curlBox">Loading credentials…</pre></div>
+        <div class="apple-card-body"><pre id="curlBox">Loading credentials…</pre></div>
       </div>
     </section>
 
-    <!-- Outbound Panel -->
-    <section id="panel-outbound" class="panel">
-      <div class="card stagger-item">
-        <div class="card-head">
-          <div><h2>ServiceNow Request Builder</h2><p>Execute authenticated requests against your PDI or ServiceNow tables.</p></div>
+    <!-- Outbound Module Panel -->
+    <section id="panel-outbound" class="tab-content-panel">
+      <div class="apple-card stagger-item">
+        <div class="apple-card-header">
+          <div><h2>ServiceNow Request Dispatcher</h2><p>Execute authenticated REST calls directly against your PDI or enterprise instance tables.</p></div>
         </div>
-        <div class="card-body">
-          <div class="url-bar">
-            <select id="httpMethod" aria-label="HTTP method">
+        <div class="apple-card-body">
+          <div class="outbound-url-grid">
+            <select id="httpMethod" aria-label="HTTP Method">
               <option>GET</option><option selected>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option>
             </select>
             <input type="url" id="httpUrl" placeholder="https://dev_instance.service-now.com/api/now/table/incident" spellcheck="false" aria-label="Request URL" value="https://dev_instance.service-now.com/api/now/table/incident">
-            <button type="button" class="btn btn-primary" id="sendBtn"><svg class="icon"><use href="#i-send"/></svg>Send Request (Ctrl+Enter)</button>
+            <button type="button" class="apple-btn apple-btn-primary" id="sendBtn"><svg><use href="#i-send"/></svg>Dispatch Request (⌘+Enter)</button>
           </div>
 
-          <div class="seg" role="tablist" aria-label="Request sections">
+          <div class="apple-segmented-track" role="tablist" aria-label="Request Sections">
             <button type="button" class="active" data-tab-group="pm" data-tab-target="pm-auth">Authorization</button>
             <button type="button" data-tab-group="pm" data-tab-target="pm-headers">Headers</button>
-            <button type="button" data-tab-group="pm" data-tab-target="pm-body">Body</button>
+            <button type="button" data-tab-group="pm" data-tab-target="pm-body">Body Payload</button>
           </div>
 
-          <div class="tab-panel" data-panel-group="pm" id="pm-auth">
-            <div class="field">
-              <label for="authType">Auth Type</label>
+          <!-- Auth Tab -->
+          <div class="cred-sub-panel" data-panel-group="pm" id="pm-auth">
+            <div class="form-field">
+              <label class="form-label" for="authType">Authentication Scheme</label>
               <select id="authType">
-                <option value="basic">Basic Auth</option>
+                <option value="basic">Basic Authentication</option>
                 <option value="bearer">Bearer Token (OAuth 2.0)</option>
                 <option value="apikey">API Key (Custom Header)</option>
                 <option value="none">No Auth</option>
               </select>
             </div>
-            <div id="basicAuthFields" class="grid-2">
-              <div class="field"><label for="basicUser">Username</label><input type="text" id="basicUser" placeholder="admin" autocomplete="off"></div>
-              <div class="field">
-                <label for="basicPass">Password</label>
-                <div class="input-group">
+            <div id="basicAuthFields" style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+              <div class="form-field"><label class="form-label" for="basicUser">ServiceNow Username</label><input type="text" id="basicUser" placeholder="admin" autocomplete="off"></div>
+              <div class="form-field">
+                <label class="form-label" for="basicPass">ServiceNow Password</label>
+                <div class="input-glass-group">
                   <input type="password" id="basicPass" placeholder="Instance password" autocomplete="new-password">
-                  <button type="button" class="icon-btn" data-reveal="basicPass" title="Show / hide" aria-label="Show or hide password"><svg class="icon"><use href="#i-eye"/></svg></button>
+                  <button type="button" class="glass-icon-btn" data-reveal="basicPass" title="Show/Hide"><svg><use href="#i-eye"/></svg></button>
                 </div>
               </div>
             </div>
-            <div id="bearerAuthField" class="field" hidden>
-              <label for="bearerToken">Access Token</label>
-              <div class="input-group">
+            <div id="bearerAuthField" class="form-field" hidden>
+              <label class="form-label" for="bearerToken">Access Token (Bearer)</label>
+              <div class="input-glass-group">
                 <input type="password" id="bearerToken" placeholder="Paste OAuth bearer token" autocomplete="new-password">
-                <button type="button" class="icon-btn" data-reveal="bearerToken" title="Show / hide" aria-label="Show or hide token"><svg class="icon"><use href="#i-eye"/></svg></button>
+                <button type="button" class="glass-icon-btn" data-reveal="bearerToken" title="Show/Hide"><svg><use href="#i-eye"/></svg></button>
               </div>
             </div>
-            <div id="apiKeyAuthFields" class="grid-2" hidden>
-              <div class="field"><label for="apiKeyHeaderName">Header Name</label><input type="text" id="apiKeyHeaderName" value="x-sn-apikey" autocomplete="off"></div>
-              <div class="field">
-                <label for="apiKeyValue">API Key</label>
-                <div class="input-group">
+            <div id="apiKeyAuthFields" style="display:grid;grid-template-columns:1fr 1fr;gap:20px" hidden>
+              <div class="form-field"><label class="form-label" for="apiKeyHeaderName">Header Key</label><input type="text" id="apiKeyHeaderName" value="x-sn-apikey" autocomplete="off"></div>
+              <div class="form-field">
+                <label class="form-label" for="apiKeyValue">API Key Value</label>
+                <div class="input-glass-group">
                   <input type="password" id="apiKeyValue" placeholder="Paste API key" autocomplete="new-password">
-                  <button type="button" class="icon-btn" data-reveal="apiKeyValue" title="Show / hide" aria-label="Show or hide key"><svg class="icon"><use href="#i-eye"/></svg></button>
+                  <button type="button" class="glass-icon-btn" data-reveal="apiKeyValue" title="Show/Hide"><svg><use href="#i-eye"/></svg></button>
                 </div>
               </div>
             </div>
-            <p class="hint" id="hostHint">Requests are restricted to approved HTTPS ServiceNow hosts.</p>
+            <p class="form-hint" id="hostHint">Requests are restricted to approved HTTPS ServiceNow hosts.</p>
           </div>
 
-          <div class="tab-panel" data-panel-group="pm" id="pm-headers" hidden>
+          <!-- Headers Tab -->
+          <div class="cred-sub-panel" data-panel-group="pm" id="pm-headers" hidden>
             <div id="headersList"></div>
-            <button type="button" class="btn btn-secondary btn-sm" id="addHeaderBtn">+ Add Header</button>
+            <button type="button" class="apple-btn apple-btn-secondary apple-btn-sm" id="addHeaderBtn">+ Add Custom Header</button>
           </div>
 
-          <div class="tab-panel" data-panel-group="pm" id="pm-body" hidden>
-            <label for="httpBody">Raw JSON Body</label>
+          <!-- Body Tab -->
+          <div class="cred-sub-panel" data-panel-group="pm" id="pm-body" hidden>
+            <label class="form-label" for="httpBody">Raw JSON Payload</label>
             <textarea id="httpBody" rows="8" spellcheck="false">{
-  "short_description": "Automated incident created via NexusPulse",
+  "short_description": "Automated incident created via OmniBridge Pro",
   "urgency": "2",
   "impact": "2",
   "category": "software"
@@ -1021,36 +1387,38 @@ pre{margin:0;padding:18px;background:rgba(3,3,5,0.85);border:1px solid var(--bor
       </div>
     </section>
 
-    <!-- Logs Panel -->
-    <section id="panel-logs" class="panel">
-      <div class="toolbar stagger-item">
-        <div class="seg" role="tablist" aria-label="Filter logs" style="margin:0">
+    <!-- Logs Module Panel -->
+    <section id="panel-logs" class="tab-content-panel">
+      <div class="logs-toolbar stagger-item">
+        <div class="apple-segmented-track" role="tablist" aria-label="Filter Logs" style="margin:0">
           <button type="button" class="active" data-filter="all">All Traffic</button>
-          <button type="button" class="filter-btn" data-filter="inbound">Inbound</button>
-          <button type="button" class="filter-btn" data-filter="outbound">Outbound</button>
+          <button type="button" data-filter="inbound">Inbound</button>
+          <button type="button" data-filter="outbound">Outbound</button>
         </div>
-        <div class="spacer"></div>
-        <button type="button" class="btn btn-danger-ghost btn-sm" id="clearAllBtn"><svg class="icon"><use href="#i-trash"/></svg>Delete All Records</button>
+        <div class="flex-spacer"></div>
+        <button type="button" class="apple-btn apple-btn-danger apple-btn-sm" id="clearAllBtn"><svg><use href="#i-trash"/></svg>Purge All Telemetry</button>
       </div>
       <div id="logsList" class="stagger-item"></div>
     </section>
 
-    <footer class="workspace-footer">
-      <div>NexusPulse · Enterprise Integration Gateway</div>
-      <div>Designed &amp; Engineered by <span class="creator-sig">Chadaram Veera Pavan</span></div>
+    <footer style="margin-top:auto;padding-top:28px;border-top:1px solid var(--apple-border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;color:var(--apple-text-secondary);font-size:12.5px">
+      <div>OmniBridge Pro · Enterprise Integration Suite</div>
+      <div>Designed &amp; Engineered by <b style="color:var(--accent-cyan)">Chadaram Veera Pavan</b></div>
     </footer>
   </main>
 </div>
 
-<div class="toasts" id="toasts" aria-live="polite"></div>
+<!-- Apple Liquid Glass Toast Stack -->
+<div class="toast-container" id="toasts" aria-live="polite"></div>
 
-<div class="modal" id="modal" hidden>
-  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+<!-- Apple OS Confirmation Sheet Dialog -->
+<div class="apple-modal-overlay" id="modal" hidden>
+  <div class="apple-modal-sheet" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <h3 id="modalTitle"></h3>
     <p id="modalBody"></p>
-    <div class="actions">
-      <button type="button" class="btn btn-secondary" id="modalCancel">Cancel</button>
-      <button type="button" class="btn btn-primary" id="modalConfirm">Confirm</button>
+    <div class="modal-btn-row">
+      <button type="button" class="apple-btn apple-btn-secondary" id="modalCancel">Cancel</button>
+      <button type="button" class="apple-btn apple-btn-primary" id="modalConfirm">Confirm</button>
     </div>
   </div>
 </div>
@@ -1062,10 +1430,11 @@ pre{margin:0;padding:18px;background:rgba(3,3,5,0.85);border:1px solid var(--bor
   var API = '/api/servicenow';
   var MAX_RENDER_CHARS = 50000;
   var PAGES = {
-    inbound: ['Inbound Webhook Hub', 'Receive ServiceNow payloads on a secure endpoint URL.'],
-    outbound: ['Outbound HTTP Client', 'Send authenticated requests to your ServiceNow instance.'],
-    logs: ['Execution Logs & Audit', 'Real-time audit trail of inbound and outbound traffic.']
+    inbound: ['Inbound Ingestion Gateway', 'Cryptographically monitored URL endpoint accepting ServiceNow payloads.'],
+    outbound: ['Outbound REST Dispatcher', 'Authenticated Table API execution engine supporting PDI & enterprise instances.'],
+    logs: ['Audit & Telemetry Stream', 'Real-time cryptographic audit trail of inbound webhooks and outbound requests.']
   };
+
   var state = {
     view: 'home',
     panel: 'inbound',
@@ -1088,16 +1457,26 @@ pre{margin:0;padding:18px;background:rgba(3,3,5,0.85);border:1px solid var(--bor
   }
   function formatTime(iso) {
     var d = new Date(iso);
-    return isNaN(d) ? esc(iso) : esc(d.toLocaleString());
+    return isNaN(d) ? esc(iso) : esc(d.toLocaleTimeString() + ' ' + d.toLocaleDateString());
   }
 
-  /* ==================== 60FPS FLUID GLASS WEBCANVAS ENGINE ==================== */
+  /* Live Apple OS System Clock */
+  function updateClock() {
+    var d = new Date();
+    var s = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    var clockEl = $('systemClock');
+    if (clockEl) clockEl.textContent = s;
+  }
+  setInterval(updateClock, 1000);
+  updateClock();
+
+  /* ==================== 60FPS SPIDER WEB PHYSICS ENGINE ==================== */
   var canvas = $('webCanvas');
   var ctx = canvas.getContext('2d');
   var W = 0, H = 0, dpr = 1;
   var mouse = { x: -9999, y: -9999, active: false };
 
-  var cam = {
+  var webCam = {
     cx: 0, cy: 0,
     targetX: 0, targetY: 0,
     velocity: 0,
@@ -1107,39 +1486,52 @@ pre{margin:0;padding:18px;background:rgba(3,3,5,0.85);border:1px solid var(--bor
     rotation: 0
   };
 
-  var nodes = [];
-  var NODE_COUNT = 68;
+  // Spider web parameters
+  var SPOKE_COUNT = 20;
+  var RING_COUNT = 9;
+  var webNodes = []; // All intersections of spokes & concentric rings
+  var shockwaves = []; // Acoustic ripples on click
 
-  function resizeCanvas() {
+  function resizeWebCanvas() {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
     W = window.innerWidth;
     H = window.innerHeight;
     canvas.width = W * dpr;
     canvas.height = H * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    if (!cam.cx) {
-      cam.cx = cam.targetX = W * 0.5;
-      cam.cy = cam.targetY = H * 0.45;
+    if (!webCam.cx) {
+      webCam.cx = webCam.targetX = W * 0.5;
+      webCam.cy = webCam.targetY = H * 0.46;
     }
+    buildSpiderWebNodes();
   }
-  window.addEventListener('resize', resizeCanvas);
-  resizeCanvas();
+  window.addEventListener('resize', resizeWebCanvas);
 
-  function initWebNodes() {
-    nodes = [];
-    for (var i = 0; i < NODE_COUNT; i++) {
-      nodes.push({
-        x: Math.random() * W,
-        y: Math.random() * H,
-        z: 0.3 + Math.random() * 0.7,
-        vx: (Math.random() - 0.5) * 0.38,
-        vy: (Math.random() - 0.5) * 0.38,
-        r: 1.4 + Math.random() * 1.8,
-        azure: Math.random() > 0.55
-      });
+  function buildSpiderWebNodes() {
+    webNodes = [];
+    var maxR = Math.max(W, H) * 0.65;
+    for (var r = 1; r <= RING_COUNT; r++) {
+      var radiusRatio = Math.pow(r / RING_COUNT, 1.15);
+      var ringRadius = radiusRatio * maxR;
+      var ring = [];
+      for (var s = 0; s < SPOKE_COUNT; s++) {
+        var baseAngle = (s / SPOKE_COUNT) * Math.PI * 2;
+        ring.push({
+          spoke: s,
+          ring: r,
+          baseAngle: baseAngle,
+          baseR: ringRadius,
+          x: 0, y: 0,
+          vx: 0, vy: 0,
+          elasticX: 0, elasticY: 0,
+          dewdropSize: 1.2 + (r % 3 === 0 ? 1.5 : 0.6),
+          isGlowing: false
+        });
+      }
+      webNodes.push(ring);
     }
   }
-  initWebNodes();
+  resizeWebCanvas();
 
   window.addEventListener('mousemove', function (e) {
     mouse.x = e.clientX;
@@ -1151,237 +1543,296 @@ pre{margin:0;padding:18px;background:rgba(3,3,5,0.85);border:1px solid var(--bor
     mouse.active = false;
   });
 
-  function impulseWeb(tx, ty, zoomBoost, velBoost) {
-    cam.targetX = typeof tx === 'number' ? tx : W * 0.5;
-    cam.targetY = typeof ty === 'number' ? ty : H * 0.45;
-    cam.targetZoom = zoomBoost || 1.12;
-    cam.targetVelocity = velBoost || 20;
+  // Acoustic silk shockwave impulse
+  function triggerSpiderWebImpulse(x, y, zoomBoost, velocityBoost) {
+    webCam.targetX = typeof x === 'number' ? x : W * 0.5;
+    webCam.targetY = typeof y === 'number' ? y : H * 0.46;
+    webCam.targetZoom = zoomBoost || 1.18;
+    webCam.targetVelocity = velocityBoost || 24;
+
+    shockwaves.push({
+      x: x || W * 0.5,
+      y: y || H * 0.46,
+      radius: 0,
+      maxRadius: Math.max(W, H) * 1.1,
+      speed: 28,
+      intensity: 1.0
+    });
   }
 
-  function settleWeb() {
-    cam.targetX = W * 0.5;
-    cam.targetY = H * 0.45;
-    cam.targetZoom = 1;
-    cam.targetVelocity = 0;
+  function settleSpiderWeb() {
+    webCam.targetX = W * 0.5;
+    webCam.targetY = H * 0.46;
+    webCam.targetZoom = 1;
+    webCam.targetVelocity = 0;
   }
 
-  function renderWebLoop() {
+  var animTime = 0;
+  function renderSpiderWebLoop() {
     ctx.clearRect(0, 0, W, H);
+    animTime += 0.015;
 
-    cam.cx += (cam.targetX - cam.cx) * 0.09;
-    cam.cy += (cam.targetY - cam.cy) * 0.09;
-    cam.zoom += (cam.targetZoom - cam.zoom) * 0.09;
-    cam.velocity += (cam.targetVelocity - cam.velocity) * 0.1;
-    cam.rotation += 0.0006 + (cam.velocity * 0.001);
+    // Camera dampening spring
+    webCam.cx += (webCam.targetX - webCam.cx) * 0.08;
+    webCam.cy += (webCam.targetY - webCam.cy) * 0.08;
+    webCam.zoom += (webCam.targetZoom - webCam.zoom) * 0.08;
+    webCam.velocity += (webCam.targetVelocity - webCam.velocity) * 0.09;
+    webCam.rotation += 0.0004 + (webCam.velocity * 0.0008);
 
-    var isWarping = cam.velocity > 2;
-    var ringCount = 4;
-    var maxRadius = Math.max(W, H) * 0.6 * cam.zoom;
-    var webAlpha = Math.min(0.2, 0.06 + cam.velocity * 0.005);
+    var isHyperspace = webCam.velocity > 2;
 
-    ctx.save();
-    ctx.strokeStyle = 'rgba(0, 245, 160, ' + webAlpha + ')';
-    ctx.lineWidth = 1;
-
-    var spokes = 14;
-    for (var s = 0; s < spokes; s++) {
-      var ang = (s / spokes) * Math.PI * 2 + cam.rotation;
-      ctx.beginPath();
-      ctx.moveTo(cam.cx, cam.cy);
-      ctx.lineTo(cam.cx + Math.cos(ang) * maxRadius, cam.cy + Math.sin(ang) * maxRadius);
-      ctx.stroke();
-    }
-
-    for (var r = 1; r <= ringCount; r++) {
-      var rad = (r / ringCount) * maxRadius;
-      ctx.beginPath();
-      for (var s2 = 0; s2 <= spokes; s2++) {
-        var a2 = (s2 / spokes) * Math.PI * 2 + cam.rotation;
-        var wobble = Math.sin(a2 * 3 + r) * 6;
-        var px = cam.cx + Math.cos(a2) * (rad + wobble);
-        var py = cam.cy + Math.sin(a2) * (rad + wobble);
-        if (s2 === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
+    // Update active shockwaves
+    for (var sw = shockwaves.length - 1; sw >= 0; sw--) {
+      var wave = shockwaves[sw];
+      wave.radius += wave.speed;
+      wave.intensity *= 0.96;
+      if (wave.radius > wave.maxRadius || wave.intensity < 0.02) {
+        shockwaves.splice(sw, 1);
       }
-      ctx.stroke();
     }
-    ctx.restore();
 
-    for (var i = 0; i < nodes.length; i++) {
-      var n = nodes[i];
-      var prevX = n.x;
-      var prevY = n.y;
+    // Compute nodes positions with elasticity & harmonic silk wind
+    for (var r = 0; r < webNodes.length; r++) {
+      var ring = webNodes[r];
+      for (var s = 0; s < ring.length; s++) {
+        var node = ring[s];
+        var angle = node.baseAngle + webCam.rotation;
+        var rDist = node.baseR * webCam.zoom;
 
-      if (isWarping) {
-        var dx = n.x - cam.cx;
-        var dy = n.y - cam.cy;
-        var dist = Math.hypot(dx, dy) || 1;
-        var pull = cam.velocity * 1.2 * n.z;
-        n.x += (dx / dist) * pull;
-        n.y += (dy / dist) * pull;
+        // Ambient silk sway (natural organic wind vibration)
+        var harmonicWobble = Math.sin(animTime * 1.8 + r * 0.5 + s * 0.3) * (2.0 + r * 0.6);
+        var baseX = webCam.cx + Math.cos(angle) * (rDist + harmonicWobble);
+        var baseY = webCam.cy + Math.sin(angle) * (rDist + harmonicWobble);
 
-        if (n.x < -60 || n.x > W + 60 || n.y < -60 || n.y > H + 60) {
-          var spawnAng = Math.random() * Math.PI * 2;
-          var spawnDist = 25 + Math.random() * 100;
-          n.x = cam.cx + Math.cos(spawnAng) * spawnDist;
-          n.y = cam.cy + Math.sin(spawnAng) * spawnDist;
-          prevX = n.x;
-          prevY = n.y;
-        }
-      } else {
-        n.x += n.vx * n.z;
-        n.y += n.vy * n.z;
-
-        if (n.x < 0 || n.x > W) n.vx *= -1;
-        if (n.y < 0 || n.y > H) n.vy *= -1;
-
+        // Interactive mouse tension
         if (mouse.active) {
-          var mdx = mouse.x - n.x;
-          var mdy = mouse.y - n.y;
-          var mdist = Math.hypot(mdx, mdy);
-          if (mdist < 180 && mdist > 1) {
-            n.x += (mdx / mdist) * 0.38;
-            n.y += (mdy / mdist) * 0.38;
+          var mdx = (baseX + node.elasticX) - mouse.x;
+          var mdy = (baseY + node.elasticY) - mouse.y;
+          var distToMouse = Math.hypot(mdx, mdy) || 1;
+          if (distToMouse < 160) {
+            var push = (1 - distToMouse / 160) * 22;
+            node.vx += (mdx / distToMouse) * push * 0.12;
+            node.vy += (mdy / distToMouse) * push * 0.12;
           }
         }
-      }
 
-      if (isWarping) {
-        ctx.beginPath();
-        ctx.strokeStyle = n.azure ? 'rgba(56, 189, 248, 0.45)' : 'rgba(0, 245, 160, 0.45)';
-        ctx.lineWidth = 1.5 * n.z;
-        ctx.moveTo(prevX, prevY);
+        // Shockwave impact
+        for (var k = 0; k < shockwaves.length; k++) {
+          var swave = shockwaves[k];
+          var distToWaveOrigin = Math.hypot(baseX - swave.x, baseY - swave.y);
+          var waveDiff = Math.abs(distToWaveOrigin - swave.radius);
+          if (waveDiff < 45) {
+            var waveKick = (1 - waveDiff / 45) * swave.intensity * 14;
+            var pushAng = Math.atan2(baseY - swave.y, baseX - swave.x);
+            node.vx += Math.cos(pushAng) * waveKick;
+            node.vy += Math.sin(pushAng) * waveKick;
+            node.isGlowing = true;
+          }
+        }
+
+        // Spring physics restoration
+        var ax = -node.elasticX * 0.08;
+        var ay = -node.elasticY * 0.08;
+        node.vx = (node.vx + ax) * 0.88;
+        node.vy = (node.vy + ay) * 0.88;
+        node.elasticX += node.vx;
+        node.elasticY += node.vy;
+
+        node.x = baseX + node.elasticX;
+        node.y = baseY + node.elasticY;
+      }
+    }
+
+    // DRAW SPIDER WEB SILK STRANDS
+    // 1. Radial Spoke Threads
+    var outerRing = webNodes[webNodes.length - 1];
+    for (var sp = 0; sp < SPOKE_COUNT; sp++) {
+      ctx.beginPath();
+      var spokeAlpha = isHyperspace ? 0.35 : 0.15;
+      ctx.strokeStyle = 'rgba(0, 245, 212, ' + spokeAlpha + ')';
+      ctx.lineWidth = isHyperspace ? 1.4 : 0.85;
+
+      ctx.moveTo(webCam.cx, webCam.cy);
+      for (var rn = 0; rn < webNodes.length; rn++) {
+        var n = webNodes[rn][sp];
         ctx.lineTo(n.x, n.y);
-        ctx.stroke();
       }
-
-      ctx.beginPath();
-      ctx.fillStyle = n.azure ? 'rgba(56, 189, 248, 0.85)' : 'rgba(0, 245, 160, 0.85)';
-      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-      ctx.fill();
-
-      if (!isWarping) {
-        for (var j = i + 1; j < nodes.length; j++) {
-          var n2 = nodes[j];
-          var d = Math.hypot(n.x - n2.x, n.y - n2.y);
-          if (d < 120) {
-            ctx.beginPath();
-            ctx.strokeStyle = 'rgba(0, 245, 160, ' + ((1 - d / 120) * 0.18) + ')';
-            ctx.lineWidth = 0.8;
-            ctx.moveTo(n.x, n.y);
-            ctx.lineTo(n2.x, n2.y);
-            ctx.stroke();
-          }
-        }
-
-        if (mouse.active) {
-          var cmDist = Math.hypot(n.x - mouse.x, n.y - mouse.y);
-          if (cmDist < 170) {
-            ctx.beginPath();
-            ctx.strokeStyle = 'rgba(56, 189, 248, ' + ((1 - cmDist / 170) * 0.5) + ')';
-            ctx.lineWidth = 1.1;
-            ctx.moveTo(n.x, n.y);
-            ctx.lineTo(mouse.x, mouse.y);
-            ctx.stroke();
-          }
-        }
-      }
+      ctx.stroke();
     }
 
-    requestAnimationFrame(renderWebLoop);
-  }
-  requestAnimationFrame(renderWebLoop);
+    // 2. Concentric Spiral Web Loops
+    for (var rIdx = 0; rIdx < webNodes.length; rIdx++) {
+      var currentRing = webNodes[rIdx];
+      ctx.beginPath();
+      var loopAlpha = isHyperspace ? 0.28 : (0.09 + (rIdx / webNodes.length) * 0.1);
+      ctx.strokeStyle = rIdx % 2 === 0 ? 'rgba(0, 245, 212, ' + loopAlpha + ')' : 'rgba(10, 132, 255, ' + loopAlpha + ')';
+      ctx.lineWidth = 0.9;
 
-  /* ==================== 60FPS VIEW & TAB TRANSITIONS ==================== */
+      for (var sIdx = 0; sIdx <= SPOKE_COUNT; sIdx++) {
+        var nd = currentRing[sIdx % SPOKE_COUNT];
+        if (sIdx === 0) ctx.moveTo(nd.x, nd.y);
+        else ctx.lineTo(nd.x, nd.y);
+      }
+      ctx.stroke();
+    }
+
+    // 3. Shimmering Caustic Dewdrops on Web Intersections
+    for (var ri = 0; ri < webNodes.length; ri++) {
+      var rNodes = webNodes[ri];
+      for (var si = 0; si < rNodes.length; si++) {
+        var pt = rNodes[si];
+        var beadRadius = pt.dewdropSize;
+        if (isHyperspace) beadRadius *= 1.4;
+
+        ctx.beginPath();
+        if (pt.isGlowing || isHyperspace) {
+          ctx.fillStyle = 'rgba(0, 245, 212, 0.9)';
+          ctx.shadowColor = 'rgba(0, 245, 212, 0.8)';
+          ctx.shadowBlur = 8;
+        } else {
+          ctx.fillStyle = (ri + si) % 2 === 0 ? 'rgba(255, 255, 255, 0.75)' : 'rgba(56, 189, 248, 0.75)';
+          ctx.shadowBlur = 0;
+        }
+        ctx.arc(pt.x, pt.y, beadRadius, 0, Math.PI * 2);
+        ctx.fill();
+        pt.isGlowing = false;
+      }
+    }
+    ctx.shadowBlur = 0;
+
+    requestAnimationFrame(renderSpiderWebLoop);
+  }
+  requestAnimationFrame(renderSpiderWebLoop);
+
+  /* ==================== 3D TILT EFFECT ON HOMEPAGE CARDS ==================== */
+  function init3DTiltCards() {
+    var cards = document.querySelectorAll('.glass-portal');
+    cards.forEach(function (card) {
+      card.addEventListener('mousemove', function (e) {
+        var rect = card.getBoundingClientRect();
+        var x = e.clientX - rect.left;
+        var y = e.clientY - rect.top;
+        var centerX = rect.width / 2;
+        var centerY = rect.height / 2;
+        var rotateX = ((y - centerY) / centerY) * -9;
+        var rotateY = ((x - centerX) / centerX) * 9;
+
+        card.style.setProperty('--mouse-x', x + 'px');
+        card.style.setProperty('--mouse-y', y + 'px');
+        card.style.transform = 'perspective(1000px) rotateX(' + rotateX + 'deg) rotateY(' + rotateY + 'deg) scale3d(1.025, 1.025, 1)';
+      });
+
+      card.addEventListener('mouseleave', function () {
+        card.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)';
+      });
+    });
+  }
+  init3DTiltCards();
+
+  /* ==================== DIMENSIONAL OPTICAL ILLUSION TAB & VIEW TRANSITION ==================== */
   function diveIntoWorkspace(targetPanel, clickEvent, pushHistory) {
     if (state.warping) return;
     state.warping = true;
 
     var tx = W * 0.5;
-    var ty = H * 0.5;
+    var ty = H * 0.45;
     if (clickEvent && clickEvent.currentTarget) {
       var rect = clickEvent.currentTarget.getBoundingClientRect();
       tx = rect.left + rect.width / 2;
       ty = rect.top + rect.height / 2;
     }
 
-    impulseWeb(tx, ty, 2.2, 24);
+    triggerSpiderWebImpulse(tx, ty, 1.35, 28);
 
-    var vignette = $('warpVignette');
-    vignette.style.setProperty('--wx', tx + 'px');
-    vignette.style.setProperty('--wy', ty + 'px');
-    vignette.classList.add('active');
+    var illusion = $('illusionOverlay');
+    illusion.style.setProperty('--ix', tx + 'px');
+    illusion.style.setProperty('--iy', ty + 'px');
+    illusion.classList.add('active');
 
-    var homeEl = $('homeView');
-    homeEl.style.setProperty('--ox', tx + 'px');
-    homeEl.style.setProperty('--oy', ty + 'px');
-    homeEl.classList.remove('unwarping');
-    homeEl.classList.add('diving');
+    var homeStage = $('homeView');
+    homeStage.style.setProperty('--ox', tx + 'px');
+    homeStage.style.setProperty('--oy', ty + 'px');
+    homeStage.classList.remove('spatial-resurface');
+    homeStage.classList.add('spatial-dive');
 
     setTimeout(function () {
-      settleWeb();
-      vignette.classList.remove('active');
+      settleSpiderWeb();
+      illusion.classList.remove('active');
 
-      homeEl.hidden = true;
-      homeEl.classList.remove('diving');
+      homeStage.hidden = true;
+      homeStage.classList.remove('spatial-dive');
 
-      var wsEl = $('workspaceView');
-      wsEl.hidden = false;
-      wsEl.classList.remove('entering');
-      void wsEl.offsetWidth;
-      wsEl.classList.add('entering');
+      var wsApp = $('workspaceView');
+      wsApp.hidden = false;
+      wsApp.classList.remove('spatial-reveal');
+      void wsApp.offsetWidth;
+      wsApp.classList.add('spatial-reveal');
 
       state.view = 'workspace';
       state.warping = false;
       selectPanel(targetPanel, pushHistory, true);
-    }, 450);
+    }, 440);
   }
 
   function returnToHome(pushHistory) {
     if (state.warping) return;
     state.view = 'home';
 
-    impulseWeb(W * 0.5, H * 0.45, 1.3, 12);
-    setTimeout(settleWeb, 350);
+    triggerSpiderWebImpulse(W * 0.5, H * 0.46, 1.25, 16);
+    setTimeout(settleSpiderWeb, 360);
 
-    var wsEl = $('workspaceView');
-    wsEl.hidden = true;
-    wsEl.classList.remove('entering');
+    var wsApp = $('workspaceView');
+    wsApp.hidden = true;
+    wsApp.classList.remove('spatial-reveal');
 
-    var homeEl = $('homeView');
-    homeEl.style.setProperty('--ox', '50%');
-    homeEl.style.setProperty('--oy', '45%');
-    homeEl.hidden = false;
-    homeEl.classList.remove('diving');
-    homeEl.classList.remove('unwarping');
-    void homeEl.offsetWidth;
-    homeEl.classList.add('unwarping');
+    var homeStage = $('homeView');
+    homeStage.style.setProperty('--ox', '50%');
+    homeStage.style.setProperty('--oy', '46%');
+    homeStage.hidden = false;
+    homeStage.classList.remove('spatial-dive');
+    homeStage.classList.remove('spatial-resurface');
+    void homeStage.offsetWidth;
+    homeStage.classList.add('spatial-resurface');
 
     if (pushHistory) {
       history.pushState({ view: 'home' }, '', '/');
     }
   }
 
-  function selectPanel(name, pushHistory, skipWebImpulse) {
+  function selectPanel(name, pushHistory, skipWebImpulse, clickEvent) {
     var changed = state.panel !== name;
     state.panel = name;
 
     if (changed && !skipWebImpulse) {
-      impulseWeb(W * 0.55, H * 0.48, 1.15, 10);
-      setTimeout(settleWeb, 320);
+      var tx = W * 0.55;
+      var ty = H * 0.48;
+      if (clickEvent && clickEvent.currentTarget) {
+        var rect = clickEvent.currentTarget.getBoundingClientRect();
+        tx = rect.left + rect.width / 2;
+        ty = rect.top + rect.height / 2;
+      }
+      triggerSpiderWebImpulse(tx, ty, 1.18, 14);
+      setTimeout(settleSpiderWeb, 320);
+
+      // Brief optical refraction flicker
+      var illusion = $('illusionOverlay');
+      illusion.style.setProperty('--ix', tx + 'px');
+      illusion.style.setProperty('--iy', ty + 'px');
+      illusion.classList.add('active');
+      setTimeout(function () { illusion.classList.remove('active'); }, 180);
     }
 
-    Array.prototype.forEach.call(document.querySelectorAll('.panel'), function (p) {
+    Array.prototype.forEach.call(document.querySelectorAll('.tab-content-panel'), function (p) {
       var isTarget = p.id === 'panel-' + name;
       p.classList.toggle('active', isTarget);
-      p.classList.remove('tab-entering');
+      p.classList.remove('tab-illusion-in');
       if (isTarget) {
         void p.offsetWidth;
-        p.classList.add('tab-entering');
+        p.classList.add('tab-illusion-in');
       }
     });
 
-    Array.prototype.forEach.call(document.querySelectorAll('.nav-item'), function (b) {
+    Array.prototype.forEach.call(document.querySelectorAll('.nav-tab-btn'), function (b) {
       b.classList.toggle('active', b.getAttribute('data-panel') === name);
     });
 
@@ -1403,19 +1854,23 @@ pre{margin:0;padding:18px;background:rgba(3,3,5,0.85);border:1px solid var(--bor
       $('homeView').hidden = true;
       $('workspaceView').hidden = false;
       state.view = 'workspace';
-      if (path.includes('/outbound')) selectPanel('outbound', false);
-      else if (path.includes('/logs')) selectPanel('logs', false);
-      else selectPanel('inbound', false);
+      if (path.includes('/outbound')) selectPanel('outbound', false, true);
+      else if (path.includes('/logs')) selectPanel('logs', false, true);
+      else selectPanel('inbound', false, true);
     }
   });
 
-  /* ==================== UI HELPERS & API LOGIC ==================== */
+  /* ==================== TOAST & MODAL CONTROLS ==================== */
   function toast(msg, kind) {
     var el = document.createElement('div');
-    el.className = 'toast ' + (kind || 'info');
+    el.className = 'apple-toast ' + (kind || 'info');
     el.textContent = msg;
     $('toasts').appendChild(el);
-    setTimeout(function () { el.remove(); }, 3400);
+    setTimeout(function () {
+      el.style.opacity = '0';
+      el.style.transform = 'translate3d(0, 10px, 0)';
+      setTimeout(function () { el.remove(); }, 300);
+    }, 3400);
   }
 
   var modalResolve = null;
@@ -1425,7 +1880,7 @@ pre{margin:0;padding:18px;background:rgba(3,3,5,0.85);border:1px solid var(--bor
       $('modalBody').textContent = opts.message;
       var ok = $('modalConfirm');
       ok.textContent = opts.confirmLabel || 'Confirm';
-      ok.className = 'btn ' + (opts.danger ? 'btn-danger' : 'btn-primary');
+      ok.className = 'apple-btn ' + (opts.danger ? 'apple-btn-danger' : 'apple-btn-primary');
       $('modal').hidden = false;
       $('modalCancel').focus();
       modalResolve = resolve;
@@ -1482,6 +1937,7 @@ pre{margin:0;padding:18px;background:rgba(3,3,5,0.85);border:1px solid var(--bor
     if (group === 'cred') { state.credTab = target; renderCurl(); }
   }
 
+  /* ==================== CREDENTIALS & CURL ENGINE ==================== */
   function renderCredentials() {
     var base = location.origin + API;
     $('inboundUrlBox').value = base + '/inbound';
@@ -1505,24 +1961,37 @@ pre{margin:0;padding:18px;background:rgba(3,3,5,0.85);border:1px solid var(--bor
     var c = state.creds;
     if (!c) { box.textContent = 'Loading credentials…'; return; }
     var url = $('inboundUrlBox').value;
-    var tail = "  -H 'Content-Type: application/json' \\\n" +
-      "  -d '{\"short_description\":\"Test payload from NexusPulse\"}'";
-    var head = "curl -X POST '" + url + "' \\\n";
+    var tail = "  -H 'Content-Type: application/json' \
+" +
+      "  -d '{"short_description":"Automated test payload via OmniBridge Pro"}'";
+    var head = "curl -X POST '" + url + "' \
+";
     var out;
     if (state.credTab === 'cred-basic') {
-      out = head + "  -u '" + c.username + ":" + c.password + "' \\\n" + tail;
+      out = head + "  -u '" + c.username + ":" + c.password + "' \
+" + tail;
     } else if (state.credTab === 'cred-key') {
-      out = head + "  -H 'x-sn-apikey: " + c.apiKey + "' \\\n" + tail;
+      out = head + "  -H 'x-sn-apikey: " + c.apiKey + "' \
+" + tail;
     } else if (state.credTab === 'cred-oauth') {
-      out = "# 1) Request an access token\n" +
-        "curl -X POST '" + $('oauthUrlBox').value + "' \\\n" +
-        "  -d 'grant_type=client_credentials' \\\n" +
-        "  -d 'client_id=" + c.clientId + "' \\\n" +
-        "  -d 'client_secret=" + c.clientSecret + "'\n\n" +
-        "# 2) Call webhook with returned access_token\n" +
-        head + "  -H 'Authorization: Bearer <access_token>' \\\n" + tail;
+      out = "# 1) Request OAuth access token
+" +
+        "curl -X POST '" + $('oauthUrlBox').value + "' \
+" +
+        "  -d 'grant_type=client_credentials' \
+" +
+        "  -d 'client_id=" + c.clientId + "' \
+" +
+        "  -d 'client_secret=" + c.clientSecret + "'
+
+" +
+        "# 2) Call webhook endpoint with returned access_token
+" +
+        head + "  -H 'Authorization: Bearer <access_token>' \
+" + tail;
     } else {
-      out = head + "  -H 'Authorization: Bearer " + c.bearer + "' \\\n" + tail;
+      out = head + "  -H 'Authorization: Bearer " + c.bearer + "' \
+" + tail;
     }
     box.textContent = out;
   }
@@ -1540,7 +2009,7 @@ pre{margin:0;padding:18px;background:rgba(3,3,5,0.85);border:1px solid var(--bor
       .then(function (c) {
         state.creds = c;
         renderCredentials();
-        toast('New credentials issued securely. Previous keys revoked.', 'success');
+        toast('New cryptographic credentials issued securely. Old keys revoked.', 'success');
       }).catch(function (e) {
         toast('Could not rotate credentials: ' + e.message, 'error');
       });
@@ -1553,8 +2022,8 @@ pre{margin:0;padding:18px;background:rgba(3,3,5,0.85);border:1px solid var(--bor
   function updateMetrics() {
     var all = state.outbound.concat(state.inbound);
     $('metricTotal').textContent = all.length;
-    $('homeStatTotal').textContent = all.length;
-    $('homeLogBadge').textContent = all.length + ' EVENTS';
+    $('statTotalTraffic').textContent = all.length;
+    $('homeEventsBadge').textContent = all.length + ' EVENTS';
 
     var successes = state.outbound.filter(function(o) { return o.statusCode >= 200 && o.statusCode < 300; }).length;
     var outboundTotal = state.outbound.length;
@@ -1580,7 +2049,7 @@ pre{margin:0;padding:18px;background:rgba(3,3,5,0.85);border:1px solid var(--bor
       }).catch(function () {});
   }
 
-  function badge(text, cls) { return '<span class="badge ' + cls + '">' + esc(text) + '</span>'; }
+  function badge(text, cls) { return '<span class="apple-pill-badge ' + cls + '">' + esc(text) + '</span>'; }
 
   function block(label, data) {
     if (data === null || data === undefined || data === '') return '';
@@ -1588,31 +2057,31 @@ pre{margin:0;padding:18px;background:rgba(3,3,5,0.85);border:1px solid var(--bor
     var text = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
     var cut = false;
     if (text.length > MAX_RENDER_CHARS) { text = text.slice(0, MAX_RENDER_CHARS); cut = true; }
-    return '<div class="block"><div class="block-label">' + esc(label) + '</div><pre>' + esc(text) + '</pre>' +
-      (cut ? '<div class="trunc">Output truncated.</div>' : '') + '</div>';
+    return '<div class="log-body-block"><div class="log-body-label">' + esc(label) + '</div><pre>' + esc(text) + '</pre>' +
+      (cut ? '<div style="color:var(--apple-text-tertiary);margin-top:6px;font-size:12px">Output truncated for performance.</div>' : '') + '</div>';
   }
 
   function logCard(item) {
     var inbound = item.direction === 'INBOUND';
-    var delBtn = '<button type="button" class="btn btn-danger-ghost btn-sm" data-delete="' + esc(item.id) + '">' +
-      '<svg class="icon"><use href="#i-trash"/></svg>Delete</button>';
+    var delBtn = '<button type="button" class="apple-btn apple-btn-danger apple-btn-sm" data-delete="' + esc(item.id) + '">' +
+      '<svg><use href="#i-trash"/></svg>Delete</button>';
     var head, body;
     if (inbound) {
-      head = badge(item.method || 'IN', 'b-neutral') + badge('Inbound', 'b-info') + badge(item.authMethod || 'Authenticated', 'b-ok') + '<span class="log-id">' + esc(item.id) + '</span>';
-      body = block('Query Parameters', item.query) + block('Payload', item.payload);
+      head = badge(item.method || 'IN', 'badge-neutral') + badge('Inbound', 'badge-info') + badge(item.authMethod || 'Authenticated', 'badge-success') + '<span class="log-tracking-id">' + esc(item.id) + '</span>';
+      body = block('Query Parameters', item.query) + block('Payload Data', item.payload);
     } else {
       var code = item.statusCode || 0;
-      var cls = code >= 200 && code < 300 ? 'b-ok' : (code >= 300 && code < 400 ? 'b-warn' : 'b-err');
-      head = badge(item.method, 'b-neutral') + badge(item.status, cls) + '<span class="log-id">' + esc(item.id) + '</span>' +
-        '<span class="log-meta">' + esc(item.durationMs) + ' ms</span>';
-      body = block('Request body', item.requestPayload) + block('Response', item.responsePayload);
+      var cls = code >= 200 && code < 300 ? 'badge-success' : (code >= 300 && code < 400 ? 'badge-warning' : 'badge-danger');
+      head = badge(item.method, 'badge-neutral') + badge(item.status, cls) + '<span class="log-tracking-id">' + esc(item.id) + '</span>' +
+        '<span class="log-timestamp">' + esc(item.durationMs) + ' ms</span>';
+      body = block('Request Payload', item.requestPayload) + block('Response Body', item.responsePayload);
     }
     var open = state.open[item.id] ? ' open' : '';
-    return '<article class="log" data-card="' + esc(item.id) + '">' +
-      '<div class="log-head"><div class="log-title">' + head + '</div>' +
-      '<div class="log-actions"><span class="log-meta">' + formatTime(item.timestamp) + '</span>' + delBtn + '</div></div>' +
-      (inbound ? '<div class="log-url">' + esc(item.method || 'ANY') + ' /api/servicenow/inbound</div>' : '<div class="log-url">' + esc(item.url) + '</div>') +
-      (body ? '<details data-id="' + esc(item.id) + '"' + open + '><summary>' + (inbound ? 'Query &amp; Payload' : 'Request &amp; Response') + '</summary>' + body + '</details>' : '') +
+    return '<article class="audit-log-item" data-card="' + esc(item.id) + '">' +
+      '<div class="log-card-header"><div class="log-badges-cluster">' + head + '</div>' +
+      '<div style="display:flex;align-items:center;gap:14px"><span class="log-timestamp">' + formatTime(item.timestamp) + '</span>' + delBtn + '</div></div>' +
+      (inbound ? '<div class="log-endpoint-url">' + esc(item.method || 'ANY') + ' /api/servicenow/inbound</div>' : '<div class="log-endpoint-url">' + esc(item.url) + '</div>') +
+      (body ? '<details data-id="' + esc(item.id) + '"' + open + '><summary>' + (inbound ? 'Inspect Payload &amp; Query' : 'Inspect Request &amp; Response') + '</summary>' + body + '</details>' : '') +
       '</article>';
   }
 
@@ -1620,15 +2089,15 @@ pre{margin:0;padding:18px;background:rgba(3,3,5,0.85);border:1px solid var(--bor
     var all = state.outbound.concat(state.inbound).sort(function (a, b) {
       return new Date(b.timestamp) - new Date(a.timestamp);
     });
-    $('logCount').textContent = all.length;
+    $('sidebarLogCount').textContent = all.length;
     $('clearAllBtn').disabled = all.length === 0;
 
     var list = all.filter(function (i) {
       return state.filter === 'all' || i.direction.toLowerCase() === state.filter;
     });
     if (!list.length) {
-      $('logsList').innerHTML = '<div class="empty"><svg class="icon"><use href="#i-list"/></svg>' +
-        '<strong>No records captured</strong><span>Inbound webhooks and outbound requests will appear here instantly.</span></div>';
+      $('logsList').innerHTML = '<div class="empty-telemetry"><svg><use href="#i-list"/></svg>' +
+        '<strong>No telemetry records captured</strong><span>Inbound webhooks and outbound requests will stream here instantly.</span></div>';
       return;
     }
     $('logsList').innerHTML = list.map(logCard).join('');
@@ -1641,7 +2110,7 @@ pre{margin:0;padding:18px;background:rgba(3,3,5,0.85);border:1px solid var(--bor
   function deleteRecord(id) {
     confirmDialog({
       title: 'Delete record?',
-      message: 'Record ' + id + ' will be permanently purged.',
+      message: 'Record ' + id + ' will be permanently purged from the telemetry stream.',
       confirmLabel: 'Delete record', danger: true
     }).then(function (yes) {
       if (!yes) return;
@@ -1652,7 +2121,7 @@ pre{margin:0;padding:18px;background:rgba(3,3,5,0.85);border:1px solid var(--bor
             state.outbound = state.outbound.filter(function (i) { return i.id !== id; });
             delete state.open[id];
             resetSignature(); renderLogs(); updateMetrics();
-            toast('Record ' + id + ' deleted', 'success');
+            toast('Record ' + id + ' purged', 'success');
           }
         });
     });
@@ -1662,9 +2131,9 @@ pre{margin:0;padding:18px;background:rgba(3,3,5,0.85);border:1px solid var(--bor
     var total = state.inbound.length + state.outbound.length;
     if (!total) { toast('No records to delete', 'info'); return; }
     confirmDialog({
-      title: 'Delete all records?',
-      message: 'All ' + total + ' records will be permanently wiped.',
-      confirmLabel: 'Delete all', danger: true
+      title: 'Purge all telemetry?',
+      message: 'All ' + total + ' telemetry records will be permanently wiped.',
+      confirmLabel: 'Purge all', danger: true
     }).then(function (yes) {
       if (!yes) return;
       return fetch(API + '/logs', { method: 'DELETE' })
@@ -1672,17 +2141,17 @@ pre{margin:0;padding:18px;background:rgba(3,3,5,0.85);border:1px solid var(--bor
         .then(function (d) {
           state.inbound = []; state.outbound = []; state.open = {};
           resetSignature(); renderLogs(); updateMetrics();
-          toast(d.deleted + ' records wiped', 'success');
+          toast(d.deleted + ' records purged', 'success');
         });
     });
   }
 
   function addHeaderRow(k, v) {
     var row = document.createElement('div');
-    row.className = 'header-row';
+    row.className = 'header-row-pair';
     row.innerHTML = '<input type="text" class="h-key" placeholder="Header name" aria-label="Header name">' +
       '<input type="text" class="h-val" placeholder="Value" aria-label="Header value">' +
-      '<button type="button" class="icon-btn" data-remove-row title="Remove header" aria-label="Remove header"><svg class="icon"><use href="#i-trash"/></svg></button>';
+      '<button type="button" class="glass-icon-btn" data-remove-row title="Remove header" aria-label="Remove header"><svg><use href="#i-trash"/></svg></button>';
     row.querySelector('.h-key').value = k || '';
     row.querySelector('.h-val').value = v || '';
     $('headersList').appendChild(row);
@@ -1703,12 +2172,12 @@ pre{margin:0;padding:18px;background:rgba(3,3,5,0.85);border:1px solid var(--bor
   function sendOutbound() {
     if (state.sending) return;
     var url = $('httpUrl').value.trim();
-    if (!url) { toast('Enter a target ServiceNow endpoint URL', 'error'); return; }
+    if (!url) { toast('Please specify a target ServiceNow URL', 'error'); return; }
 
     var method = $('httpMethod').value;
     var rawBody = $('httpBody').value;
     var headers = {};
-    Array.prototype.forEach.call(document.querySelectorAll('#headersList .header-row'), function (row) {
+    Array.prototype.forEach.call(document.querySelectorAll('#headersList .header-row-pair'), function (row) {
       var k = row.querySelector('.h-key').value.trim();
       var v = row.querySelector('.h-val').value.trim();
       if (k) headers[k] = v;
@@ -1717,7 +2186,7 @@ pre{margin:0;padding:18px;background:rgba(3,3,5,0.85);border:1px solid var(--bor
     var parsed = null;
     if (['POST', 'PUT', 'PATCH'].indexOf(method) > -1 && rawBody.trim()) {
       try { parsed = JSON.parse(rawBody); }
-      catch (e) { toast('Invalid JSON body syntax', 'error'); return; }
+      catch (e) { toast('Invalid JSON syntax in request body', 'error'); return; }
     }
 
     state.sending = true;
@@ -1741,13 +2210,13 @@ pre{margin:0;padding:18px;background:rgba(3,3,5,0.85);border:1px solid var(--bor
         state.outbound.unshift(r.data.record);
         resetSignature(); renderLogs(); updateMetrics();
         var rec = r.data.record;
-        toast(rec.method + ' completed: ' + rec.status, rec.statusCode >= 200 && rec.statusCode < 300 ? 'success' : 'error');
+        toast(rec.method + ' dispatched: ' + rec.status, rec.statusCode >= 200 && rec.statusCode < 300 ? 'success' : 'error');
         selectPanel('logs', true);
       } else {
         toast((r.data && r.data.message) || 'Request failed', 'error');
       }
     }).catch(function () {
-      toast('Could not reach the gateway', 'error');
+      toast('Gateway unreachable', 'error');
     }).then(function () {
       state.sending = false;
       btn.disabled = false;
@@ -1755,25 +2224,29 @@ pre{margin:0;padding:18px;background:rgba(3,3,5,0.85);border:1px solid var(--bor
   }
 
   function setStatus(ok, uptime) {
-    var pills = [$('statusPill'), $('homeStatusPill')];
-    pills.forEach(function (pill) {
-      if (!pill) return;
-      pill.classList.toggle('ok', ok);
-      pill.classList.toggle('bad', !ok);
-    });
-    $('statusText').textContent = ok ? 'Gateway online' : 'Gateway offline';
-    $('homeStatusText').textContent = ok ? 'Gateway online' : 'Gateway offline';
+    var pill = $('connectionPill');
+    if (pill) {
+      pill.classList.toggle('online', ok);
+      pill.classList.toggle('offline', !ok);
+    }
+    var text = $('connectionText');
+    if (text) text.textContent = ok ? 'Gateway Online' : 'Gateway Offline';
+    var barText = $('statusBarGateway');
+    if (barText) barText.textContent = ok ? 'ServiceOS 26 · Active' : 'ServiceOS 26 · Offline';
+
     if (typeof uptime === 'number') {
-      $('homeStatUptime').textContent = uptime + 's';
+      var ut = $('statSystemUptime');
+      if (ut) ut.textContent = uptime + 's';
     }
   }
+
   function checkHealth() {
     fetch('/health', { cache: 'no-store' })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
       .then(function (d) { setStatus(true, d && d.uptimeSeconds); }, function () { setStatus(false); });
   }
 
-  /* ==================== EVENT LISTENERS ==================== */
+  /* ==================== GLOBAL EVENT LISTENERS ==================== */
   document.addEventListener('click', function (e) {
     var t = e.target;
     var el;
@@ -1782,7 +2255,6 @@ pre{margin:0;padding:18px;background:rgba(3,3,5,0.85);border:1px solid var(--bor
       diveIntoWorkspace(el.getAttribute('data-portal'), { currentTarget: el }, true);
       return;
     }
-
     if ((el = t.closest('[data-copy-header]'))) {
       if (!state.creds) { toast('Credentials still loading', 'error'); return; }
       copyText('Bearer ' + state.creds.bearer, 'Authorization header value', el);
@@ -1802,7 +2274,7 @@ pre{margin:0;padding:18px;background:rgba(3,3,5,0.85);border:1px solid var(--bor
       return;
     }
     if ((el = t.closest('[data-tab-group]'))) { switchTab(el); return; }
-    if ((el = t.closest('[data-panel]'))) { selectPanel(el.getAttribute('data-panel'), true); return; }
+    if ((el = t.closest('[data-panel]'))) { selectPanel(el.getAttribute('data-panel'), true, false, { currentTarget: el }); return; }
     if ((el = t.closest('[data-filter]'))) {
       state.filter = el.getAttribute('data-filter');
       Array.prototype.forEach.call(document.querySelectorAll('[data-filter]'), function (b) { b.classList.toggle('active', b === el); });
@@ -1889,5 +2361,5 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`NexusPulse Enterprise Glass running on port ${PORT}`);
+    console.log(`OmniBridge Pro · Enterprise Integration OS running on port ${PORT}`);
 });
