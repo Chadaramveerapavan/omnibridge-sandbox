@@ -372,8 +372,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 /* Butter-Smooth GPU Refraction Flash */
 #warpVignette{
   position:fixed;inset:0;z-index:90;pointer-events:none;opacity:0;
-  background:radial-gradient(circle at var(--wx, 50%) var(--wy, 50%), rgba(255,255,255,0.32) 0%, rgba(56,189,248,0.18) 42%, rgba(6,9,25,0.8) 85%);
-  transition:opacity 0.42s cubic-bezier(0.16, 1, 0.3, 1);
+  background:radial-gradient(circle at var(--wx, 50%) var(--wy, 50%), rgba(255,255,255,0.35) 0%, rgba(56,189,248,0.2) 42%, rgba(6,9,25,0.85) 85%);
+  transition:opacity 0.45s cubic-bezier(0.16, 1, 0.3, 1);
   will-change:opacity;
 }
 #warpVignette.active{opacity:1}
@@ -386,7 +386,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   will-change:transform,opacity;
 }
 .home-view.diving{
-  animation:portalDiveOut 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation:portalDiveOut 0.48s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   pointer-events:none;
 }
 .home-view.unwarping{
@@ -394,7 +394,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 }
 @keyframes portalDiveOut{
   0%{transform:scale3d(1,1,1);opacity:1}
-  100%{transform:scale3d(1.22,1.22,1);opacity:0}
+  100%{transform:scale3d(1.25,1.25,1);opacity:0}
 }
 @keyframes portalSurfaceIn{
   0%{transform:scale3d(1.1,1.1,1);opacity:0}
@@ -447,12 +447,23 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   box-shadow:var(--glass-shadow);
   transition:transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s, background 0.25s, box-shadow 0.25s;
   overflow:hidden;display:flex;flex-direction:column;justify-content:space-between;min-height:245px;
+  will-change:transform, opacity;
 }
 .portal-card:hover{
   transform:translate3d(0,-8px,0) scale3d(1.02,1.02,1);
   border-color:var(--glass-border-bright);
   background:linear-gradient(145deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.06) 100%);
   box-shadow:var(--glass-shadow-hover);
+}
+/* Native iOS App-Launch Spring Zoom Animation on Click */
+.portal-card.launching{
+  animation:iosAppLaunch 0.42s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  z-index:50;
+}
+@keyframes iosAppLaunch{
+  0%{transform:scale3d(1,1,1);opacity:1}
+  40%{transform:scale3d(1.06,1.06,1);opacity:0.95}
+  100%{transform:scale3d(1.18,1.18,1);opacity:0}
 }
 
 .portal-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
@@ -1273,7 +1284,6 @@ pre{margin:0;padding:18px;background:rgba(10, 15, 35, 0.45);border:1px solid rgb
   function renderWebLoop() {
     ctx.clearRect(0, 0, W, H);
 
-    // Butter-smooth lerp factor (0.09) for velvet feel
     cam.cx += (cam.targetX - cam.cx) * 0.09;
     cam.cy += (cam.targetY - cam.cy) * 0.09;
     cam.zoom += (cam.targetZoom - cam.zoom) * 0.09;
@@ -1362,10 +1372,18 @@ pre{margin:0;padding:18px;background:rgba(10, 15, 35, 0.45);border:1px solid rgb
 
     var tx = W * 0.5;
     var ty = H * 0.5;
+    var cardEl = null;
+
     if (clickEvent && clickEvent.currentTarget) {
-      var rect = clickEvent.currentTarget.getBoundingClientRect();
+      cardEl = clickEvent.currentTarget;
+      var rect = cardEl.getBoundingClientRect();
       tx = rect.left + rect.width / 2;
       ty = rect.top + rect.height / 2;
+    }
+
+    // Trigger native iOS card app-launch spring animation
+    if (cardEl) {
+      cardEl.classList.add('launching');
     }
 
     impulseWeb(tx, ty, 2.2, 22);
@@ -1387,6 +1405,7 @@ pre{margin:0;padding:18px;background:rgba(10, 15, 35, 0.45);border:1px solid rgb
 
       homeEl.hidden = true;
       homeEl.classList.remove('diving');
+      if (cardEl) cardEl.classList.remove('launching');
 
       var wsEl = $('workspaceView');
       wsEl.hidden = false;
@@ -1397,7 +1416,7 @@ pre{margin:0;padding:18px;background:rgba(10, 15, 35, 0.45);border:1px solid rgb
       state.view = 'workspace';
       state.warping = false;
       selectPanel(targetPanel, pushHistory, true);
-    }, 420);
+    }, 440);
   }
 
   function returnToHome(pushHistory) {
