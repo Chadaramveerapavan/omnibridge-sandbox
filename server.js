@@ -372,8 +372,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 /* Butter-Smooth GPU Refraction Flash */
 #warpVignette{
   position:fixed;inset:0;z-index:90;pointer-events:none;opacity:0;
-  background:radial-gradient(circle at var(--wx, 50%) var(--wy, 50%), rgba(255,255,255,0.35) 0%, rgba(56,189,248,0.2) 42%, rgba(6,9,25,0.85) 85%);
-  transition:opacity 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+  background:radial-gradient(circle at var(--wx, 50%) var(--wy, 50%), rgba(255,255,255,0.25) 0%, rgba(56,189,248,0.15) 45%, rgba(6,9,25,0.7) 90%);
+  transition:opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   will-change:opacity;
 }
 #warpVignette.active{opacity:1}
@@ -386,18 +386,18 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   will-change:transform,opacity;
 }
 .home-view.diving{
-  animation:portalDiveOut 0.48s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation:portalDiveOut 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   pointer-events:none;
 }
 .home-view.unwarping{
-  animation:portalSurfaceIn 0.52s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation:portalSurfaceIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 @keyframes portalDiveOut{
   0%{transform:scale3d(1,1,1);opacity:1}
-  100%{transform:scale3d(1.25,1.25,1);opacity:0}
+  100%{transform:scale3d(1.15,1.15,1);opacity:0}
 }
 @keyframes portalSurfaceIn{
-  0%{transform:scale3d(1.1,1.1,1);opacity:0}
+  0%{transform:scale3d(1.08,1.08,1);opacity:0}
   100%{transform:scale3d(1,1,1);opacity:1}
 }
 
@@ -457,13 +457,12 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 }
 /* Native iOS App-Launch Spring Zoom Animation on Click */
 .portal-card.launching{
-  animation:iosAppLaunch 0.42s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation:iosAppLaunch 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   z-index:50;
 }
 @keyframes iosAppLaunch{
   0%{transform:scale3d(1,1,1);opacity:1}
-  40%{transform:scale3d(1.06,1.06,1);opacity:0.95}
-  100%{transform:scale3d(1.18,1.18,1);opacity:0}
+  100%{transform:scale3d(1.12,1.12,1);opacity:0}
 }
 
 .portal-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
@@ -504,10 +503,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   will-change:transform,opacity;
 }
 .app.entering{
-  animation:workspaceEmerge 0.48s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation:workspaceEmerge 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 @keyframes workspaceEmerge{
-  0%{opacity:0;transform:scale3d(0.96,0.96,1)}
+  0%{opacity:0;transform:scale3d(0.97,0.97,1)}
   100%{opacity:1;transform:scale3d(1,1,1)}
 }
 
@@ -590,13 +589,13 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .panel.active{display:block}
 .panel.tab-entering .stagger-item{
   opacity:0;
-  animation:staggerCardIn 0.42s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation:staggerCardIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 .panel.tab-entering .stagger-item:nth-child(1){animation-delay:0.02s}
-.panel.tab-entering .stagger-item:nth-child(2){animation-delay:0.06s}
-.panel.tab-entering .stagger-item:nth-child(3){animation-delay:0.1s}
+.panel.tab-entering .stagger-item:nth-child(2){animation-delay:0.05s}
+.panel.tab-entering .stagger-item:nth-child(3){animation-delay:0.08s}
 @keyframes staggerCardIn{
-  0%{opacity:0;transform:translate3d(0,14px,0) scale3d(0.985,0.985,1)}
+  0%{opacity:0;transform:translate3d(0,10px,0) scale3d(0.99,0.99,1)}
   100%{opacity:1;transform:translate3d(0,0,0) scale3d(1,1,1)}
 }
 
@@ -1270,8 +1269,8 @@ pre{margin:0;padding:18px;background:rgba(10, 15, 35, 0.45);border:1px solid rgb
   function impulseWeb(tx, ty, zoomBoost, velBoost) {
     cam.targetX = typeof tx === 'number' ? tx : W * 0.5;
     cam.targetY = typeof ty === 'number' ? ty : H * 0.45;
-    cam.targetZoom = zoomBoost || 1.12;
-    cam.targetVelocity = velBoost || 18;
+    cam.targetZoom = zoomBoost || 1.05;
+    cam.targetVelocity = velBoost || 4;
   }
 
   function settleWeb() {
@@ -1290,7 +1289,7 @@ pre{margin:0;padding:18px;background:rgba(10, 15, 35, 0.45);border:1px solid rgb
     cam.velocity += (cam.targetVelocity - cam.velocity) * 0.1;
     cam.rotation += 0.0005 + (cam.velocity * 0.0009);
 
-    var isWarping = cam.velocity > 2;
+    var isWarping = cam.velocity > 1.5;
 
     for (var i = 0; i < nodes.length; i++) {
       var n = nodes[i];
@@ -1301,7 +1300,7 @@ pre{margin:0;padding:18px;background:rgba(10, 15, 35, 0.45);border:1px solid rgb
         var dx = n.x - cam.cx;
         var dy = n.y - cam.cy;
         var dist = Math.hypot(dx, dy) || 1;
-        var pull = cam.velocity * 1.15 * n.z;
+        var pull = cam.velocity * 0.8 * n.z;
         n.x += (dx / dist) * pull;
         n.y += (dy / dist) * pull;
 
@@ -1333,8 +1332,8 @@ pre{margin:0;padding:18px;background:rgba(10, 15, 35, 0.45);border:1px solid rgb
 
       if (isWarping) {
         ctx.beginPath();
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
-        ctx.lineWidth = 1.4 * n.z;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+        ctx.lineWidth = 1.2 * n.z;
         ctx.moveTo(prevX, prevY);
         ctx.lineTo(n.x, n.y);
         ctx.stroke();
@@ -1381,12 +1380,12 @@ pre{margin:0;padding:18px;background:rgba(10, 15, 35, 0.45);border:1px solid rgb
       ty = rect.top + rect.height / 2;
     }
 
-    // Trigger native iOS card app-launch spring animation
+    // Trigger instant synchronous app-launch spring animation
     if (cardEl) {
       cardEl.classList.add('launching');
     }
 
-    impulseWeb(tx, ty, 2.2, 22);
+    impulseWeb(tx, ty, 1.08, 6);
 
     var vignette = $('warpVignette');
     vignette.style.setProperty('--wx', tx + 'px');
@@ -1399,6 +1398,7 @@ pre{margin:0;padding:18px;background:rgba(10, 15, 35, 0.45);border:1px solid rgb
     homeEl.classList.remove('unwarping');
     homeEl.classList.add('diving');
 
+    // Switch views synchronously with zero lag delay
     setTimeout(function () {
       settleWeb();
       vignette.classList.remove('active');
@@ -1416,15 +1416,15 @@ pre{margin:0;padding:18px;background:rgba(10, 15, 35, 0.45);border:1px solid rgb
       state.view = 'workspace';
       state.warping = false;
       selectPanel(targetPanel, pushHistory, true);
-    }, 440);
+    }, 180);
   }
 
   function returnToHome(pushHistory) {
     if (state.warping) return;
     state.view = 'home';
 
-    impulseWeb(W * 0.5, H * 0.45, 1.3, 12);
-    setTimeout(settleWeb, 350);
+    impulseWeb(W * 0.5, H * 0.45, 1.02, 4);
+    setTimeout(settleWeb, 200);
 
     var wsEl = $('workspaceView');
     wsEl.hidden = true;
@@ -1449,8 +1449,8 @@ pre{margin:0;padding:18px;background:rgba(10, 15, 35, 0.45);border:1px solid rgb
     state.panel = name;
 
     if (changed && !skipWebImpulse) {
-      impulseWeb(W * 0.55, H * 0.48, 1.15, 10);
-      setTimeout(settleWeb, 300);
+      impulseWeb(W * 0.55, H * 0.48, 1.05, 4);
+      setTimeout(settleWeb, 200);
     }
 
     Array.prototype.forEach.call(document.querySelectorAll('.panel'), function (p) {
