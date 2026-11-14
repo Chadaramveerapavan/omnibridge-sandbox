@@ -9,7 +9,7 @@ const PORT = process.env.PORT || 3000;
 
 // ---- Configuration ----
 const MAX_LOGS = 200;
-const BASIC_USERNAME = process.env.BASIC_USERNAME || 'nexrelay_admin';
+const BASIC_USERNAME = process.env.BASIC_USERNAME || 'aether_admin';
 const INBOUND_TOKEN = process.env.INBOUND_TOKEN || '';
 const ALLOWED_HOSTS = (process.env.ALLOWED_HOSTS || '.service-now.com')
     .split(',').map(h => h.trim().toLowerCase()).filter(Boolean);
@@ -65,10 +65,10 @@ const sameText = (a, b) => crypto.timingSafeEqual(digest(a), digest(b));
 function issueGlobalCredentials() {
     const creds = {
         username: BASIC_USERNAME,
-        clientId: 'nexrelay_' + crypto.randomBytes(6).toString('hex'),
+        clientId: 'aether_' + crypto.randomBytes(6).toString('hex'),
         password: randomSecret('sn_pass_', 16),
         apiKey: randomSecret('sn_key_', 20),
-        bearer: randomSecret('sn_nex_', 24),
+        bearer: randomSecret('sn_aw_', 24),
         clientSecret: randomSecret('sn_sec_', 24)
     };
     activeSession = {
@@ -152,7 +152,7 @@ app.post('/api/servicenow/oauth/token', (req, res) => {
     const valid = activeSession && clientId && clientSecret &&
         matches(clientId, activeSession.clientId) && matches(clientSecret, activeSession.clientSecret);
     if (!valid) {
-        res.set('WWW-Authenticate', 'Basic realm="NexRelay OAuth"');
+        res.set('WWW-Authenticate', 'Basic realm="AetherWeb OAuth"');
         return res.status(401).json({ error: 'invalid_client', error_description: 'Unknown client or wrong secret.' });
     }
 
@@ -168,7 +168,7 @@ app.post('/api/servicenow/oauth/token', (req, res) => {
 app.all('/api/servicenow/inbound', (req, res) => {
     const authMethod = authenticateInbound(req);
     if (!authMethod) {
-        res.set('WWW-Authenticate', 'Bearer realm="NexRelay"');
+        res.set('WWW-Authenticate', 'Bearer realm="AetherWeb"');
         return res.status(401).json({
             status: 'Error',
             message: 'Authentication failed: Provide a valid Bearer token, Basic credentials, API key, or OAuth access token.'
@@ -289,22 +289,22 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok', uptimeSeconds: Math.round(process.uptime()) });
 });
 
-// ---- Interactive SpiderWeb Nexus Frontend ----
+// ---- Unified Cosmic Gold & Royal Violet Frontend (AetherWeb · Quantum Mesh) ----
 const PAGE = String.raw`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NexRelay · SpiderWeb Nexus</title>
+<title>AetherWeb · Quantum Mesh</title>
 <style>
 :root{
-  --bg:#02040a;--surface:#0a0e1a;--surface-2:#111729;--border:#1e293b;--border-strong:#334155;
-  --text:#f8fafc;--muted:#94a3b8;--accent:#10b981;--accent-hover:#059669;--accent-ink:#ffffff;--accent-soft:rgba(16,185,129,0.14);
-  --cyan:#06b6d4;--cyan-soft:rgba(6,182,212,0.14);--violet:#8b5cf6;--violet-soft:rgba(139,92,246,0.14);
-  --danger:#ef4444;--danger-soft:rgba(239,68,68,0.14);--ok:#10b981;--ok-soft:rgba(16,185,129,0.14);
-  --warn:#f59e0b;--warn-soft:rgba(245,158,11,0.14);--info:#38bdf8;--info-soft:rgba(56,189,248,0.14);
-  --shadow:0 16px 36px rgba(0,0,0,0.75);
-  --shadow-lg:0 28px 70px rgba(0,0,0,0.9), 0 0 32px rgba(16,185,129,0.15);
+  --bg:#06040f;--surface:#0e0b1f;--surface-2:#161130;--border:#2b2352;--border-strong:#43377a;
+  --text:#faf8ff;--muted:#a79ec7;--accent:#f59e0b;--accent-hover:#d97706;--accent-ink:#090514;--accent-soft:rgba(245,158,11,0.16);
+  --violet:#8b5cf6;--violet-soft:rgba(139,92,246,0.16);--rose:#f43f5e;--rose-soft:rgba(244,63,94,0.16);
+  --danger:#fb7185;--danger-soft:rgba(251,113,133,0.15);--ok:#34d399;--ok-soft:rgba(52,211,153,0.15);
+  --warn:#fbbf24;--warn-soft:rgba(251,191,36,0.15);--info:#c084fc;--info-soft:rgba(192,132,252,0.15);
+  --shadow:0 16px 38px rgba(3,2,10,0.82);
+  --shadow-lg:0 28px 72px rgba(3,2,10,0.95), 0 0 36px rgba(139,92,246,0.22);
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   color-scheme:dark;
 }
@@ -315,65 +315,66 @@ button{font:inherit}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .icon{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
-/* Interactive SpiderWeb Canvas */
+/* Unified Interactive SpiderWeb Canvas */
 #webCanvas{
   position:fixed;inset:0;width:100vw;height:100vh;z-index:0;pointer-events:none;
-  background:radial-gradient(circle at 50% 45%, #091326 0%, #02040a 75%);
+  background:radial-gradient(circle at 50% 42%, #181038 0%, #090618 55%, #04020a 100%);
 }
 
-/* Warp Illusion Overlay */
+/* Silky Smooth Warp Illusion Overlay */
 #warpFlash{
   position:fixed;inset:0;z-index:100;pointer-events:none;opacity:0;
-  background:radial-gradient(circle at var(--wx, 50%) var(--wy, 50%), rgba(16,185,129,0.35), rgba(6,182,212,0.15) 35%, rgba(2,4,10,0.96) 75%);
-  transition:opacity 0.25s ease;
+  background:radial-gradient(circle at var(--wx, 50%) var(--wy, 50%), rgba(245,158,11,0.28), rgba(139,92,246,0.18) 38%, rgba(6,4,15,0.94) 80%);
+  transition:opacity 0.38s cubic-bezier(0.22, 1, 0.36, 1);
 }
 #warpFlash.active{opacity:1}
 
-/* ==================== SPIDERWEB HOMEPAGE ==================== */
+/* ==================== HOMEPAGE VIEW ==================== */
 .home-view{
   position:relative;z-index:10;min-height:100vh;display:flex;flex-direction:column;justify-content:space-between;
-  padding:28px 48px 36px;transition:transform 0.6s cubic-bezier(0.7, 0, 0.2, 1), opacity 0.5s ease, filter 0.5s ease;
+  padding:28px 48px 30px;will-change:transform,opacity;
+  transition:transform 0.65s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .home-view.diving{
-  transform:scale(1.65);opacity:0;filter:blur(8px);pointer-events:none;
+  transform:scale(1.42);opacity:0;pointer-events:none;
 }
 .home-view.entering{
-  animation:homeUnwarp 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation:homeUnwarp 0.65s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 @keyframes homeUnwarp{
-  from{transform:scale(1.4);opacity:0;filter:blur(6px)}
-  to{transform:scale(1);opacity:1;filter:blur(0)}
+  from{transform:scale(1.22);opacity:0}
+  to{transform:scale(1);opacity:1}
 }
 
 .home-nav{display:flex;align-items:center;justify-content:space-between;max-width:1280px;width:100%;margin:0 auto}
 .home-brand{display:flex;align-items:center;gap:14px}
 .home-logo{
-  width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,#10b981,#06b6d4);
-  display:grid;place-items:center;color:#fff;box-shadow:0 0 24px rgba(16,185,129,0.45);
+  width:44px;height:44px;border-radius:13px;background:linear-gradient(135deg,#f59e0b,#8b5cf6);
+  display:grid;place-items:center;color:#fff;box-shadow:0 0 28px rgba(245,158,11,0.45);
 }
-.home-brand strong{font-size:19px;letter-spacing:0.4px;display:block;line-height:1.1}
-.home-brand span{font-size:11px;font-weight:800;letter-spacing:1.6px;text-transform:uppercase;color:var(--accent)}
+.home-brand strong{font-size:20px;letter-spacing:0.4px;display:block;line-height:1.1}
+.home-brand span{font-size:11px;font-weight:800;letter-spacing:1.7px;text-transform:uppercase;color:var(--accent)}
 
 .home-hero{
-  max-width:1180px;width:100%;margin:auto;text-align:center;padding:32px 0;
+  max-width:1180px;width:100%;margin:auto;text-align:center;padding:28px 0;
 }
 .nexus-pill{
   display:inline-flex;align-items:center;gap:10px;padding:7px 18px;border-radius:999px;
-  background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.35);
-  color:#6ee7b7;font-size:12px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;
-  margin-bottom:24px;backdrop-filter:blur(10px);
+  background:rgba(139,92,246,0.14);border:1px solid rgba(139,92,246,0.4);
+  color:#ddd6fe;font-size:12px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;
+  margin-bottom:22px;backdrop-filter:blur(10px);
 }
 .nexus-pill .pulse{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent);animation:pulseDot 2s infinite}
-@keyframes pulseDot{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.5);opacity:0.5}}
+@keyframes pulseDot{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.55);opacity:0.5}}
 
 .hero-title{
   margin:0 auto 18px;font-size:clamp(38px, 6vw, 68px);font-weight:900;letter-spacing:-1.5px;line-height:1.06;
-  background:linear-gradient(135deg, #ffffff 25%, #6ee7b7 60%, #38bdf8 95%);
+  background:linear-gradient(135deg, #ffffff 18%, #fcd34d 55%, #c084fc 95%);
   -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-  text-shadow:0 12px 40px rgba(16,185,129,0.18);
+  text-shadow:0 12px 42px rgba(245,158,11,0.18);
 }
 .hero-sub{
-  max-width:640px;margin:0 auto 48px;color:var(--muted);font-size:16.5px;line-height:1.65;
+  max-width:640px;margin:0 auto 44px;color:var(--muted);font-size:16.5px;line-height:1.65;
 }
 
 /* Spiderweb Portal Cards */
@@ -381,34 +382,34 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   display:grid;grid-template-columns:repeat(3, 1fr);gap:24px;text-align:left;
 }
 .portal-card{
-  position:relative;background:rgba(10,14,26,0.72);border:1px solid rgba(51,65,85,0.65);
-  border-radius:22px;padding:30px 28px;cursor:pointer;backdrop-filter:blur(16px);
-  transition:all 0.35s cubic-bezier(0.16, 1, 0.3, 1);overflow:hidden;
-  display:flex;flex-direction:column;justify-content:space-between;min-height:245px;
-  box-shadow:0 20px 45px rgba(0,0,0,0.6);
+  position:relative;background:rgba(14,11,31,0.72);border:1px solid rgba(67,55,122,0.7);
+  border-radius:22px;padding:30px 28px;cursor:pointer;backdrop-filter:blur(14px);
+  transition:transform 0.38s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.35s, background 0.35s, box-shadow 0.35s;
+  overflow:hidden;display:flex;flex-direction:column;justify-content:space-between;min-height:245px;
+  box-shadow:0 20px 45px rgba(3,2,10,0.65);
 }
 .portal-card::before{
   content:'';position:absolute;inset:0;border-radius:22px;padding:1.5px;
-  background:linear-gradient(135deg, rgba(16,185,129,0.6), rgba(6,182,212,0.2), transparent 65%);
+  background:linear-gradient(135deg, rgba(245,158,11,0.7), rgba(139,92,246,0.4), transparent 70%);
   -webkit-mask:linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite:xor;mask-composite:exclude;opacity:0.4;transition:opacity 0.35s;
+  -webkit-mask-composite:xor;mask-composite:exclude;opacity:0.45;transition:opacity 0.35s;
 }
 .portal-card:hover{
   transform:translateY(-8px) scale(1.02);
-  border-color:rgba(16,185,129,0.7);
-  background:rgba(15,23,42,0.88);
-  box-shadow:0 28px 60px rgba(0,0,0,0.85), 0 0 35px rgba(16,185,129,0.25);
+  border-color:rgba(245,158,11,0.8);
+  background:rgba(22,17,48,0.88);
+  box-shadow:0 28px 60px rgba(3,2,10,0.88), 0 0 38px rgba(245,158,11,0.22);
 }
 .portal-card:hover::before{opacity:1}
 
 .portal-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
 .portal-icon{
   width:48px;height:48px;border-radius:14px;display:grid;place-items:center;
-  background:var(--accent-soft);color:var(--accent);border:1px solid rgba(16,185,129,0.3);
-  transition:transform 0.35s ease, background 0.35s ease;
+  background:var(--accent-soft);color:var(--accent);border:1px solid rgba(245,158,11,0.35);
+  transition:transform 0.35s ease;
 }
-.portal-card[data-portal="outbound"] .portal-icon{background:var(--cyan-soft);color:var(--cyan);border-color:rgba(6,182,212,0.3)}
-.portal-card[data-portal="logs"] .portal-icon{background:var(--violet-soft);color:var(--violet);border-color:rgba(139,92,246,0.3)}
+.portal-card[data-portal="outbound"] .portal-icon{background:var(--violet-soft);color:#c084fc;border-color:rgba(139,92,246,0.35)}
+.portal-card[data-portal="logs"] .portal-icon{background:var(--rose-soft);color:#fb7185;border-color:rgba(244,63,94,0.35)}
 .portal-card:hover .portal-icon{transform:scale(1.1) rotate(-4deg)}
 .portal-icon .icon{width:22px;height:22px}
 
@@ -422,84 +423,98 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:800;
   color:var(--accent);letter-spacing:0.3px;transition:gap 0.25s;
 }
-.portal-card[data-portal="outbound"] .portal-cta{color:var(--cyan)}
-.portal-card[data-portal="logs"] .portal-cta{color:#a78bfa}
+.portal-card[data-portal="outbound"] .portal-cta{color:#c084fc}
+.portal-card[data-portal="logs"] .portal-cta{color:#fb7185}
 .portal-card:hover .portal-cta{gap:13px}
 
 .home-footer{
-  max-width:1280px;width:100%;margin:0 auto;display:flex;align-items:center;justify-content:space-between;
-  padding-top:20px;border-top:1px solid rgba(30,41,59,0.6);color:var(--muted);font-size:12.5px;
+  max-width:1280px;width:100%;margin:0 auto;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;
+  padding-top:18px;border-top:1px solid rgba(43,35,82,0.7);color:var(--muted);font-size:12.5px;
 }
+.creator-sig{color:#fcd34d;font-weight:700;letter-spacing:0.3px}
 .home-stats{display:flex;gap:24px;font-family:var(--mono)}
 .home-stats b{color:var(--text)}
 
-/* ==================== WORKSPACE SHELL ==================== */
+/* ==================== WORKSPACE SHELL (MATCHING THEME & WEB) ==================== */
 .app{
-  position:relative;z-index:10;display:grid;grid-template-columns:275px minmax(0,1fr);min-height:100vh;
-  background:rgba(2,4,10,0.82);backdrop-filter:blur(14px);
+  position:relative;z-index:10;display:grid;grid-template-columns:280px minmax(0,1fr);min-height:100vh;
+  background:rgba(6,4,15,0.68);backdrop-filter:blur(10px);will-change:transform,opacity;
 }
 .app.unwarping{
-  animation:appUnwarp 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation:appUnwarp 0.65s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 @keyframes appUnwarp{
-  0%{opacity:0;transform:scale(0.84);filter:blur(8px)}
-  100%{opacity:1;transform:scale(1);filter:blur(0)}
+  0%{opacity:0;transform:scale(0.92)}
+  100%{opacity:1;transform:scale(1)}
 }
 
 .sidebar{
-  background:rgba(10,14,26,0.92);color:var(--muted);display:flex;flex-direction:column;
+  background:rgba(14,11,31,0.85);color:var(--muted);display:flex;flex-direction:column;
   padding:28px 18px;position:sticky;top:0;height:100vh;border-right:1px solid var(--border);
+  backdrop-filter:blur(16px);
 }
 .brand{display:flex;align-items:center;gap:14px;padding:4px 8px 24px;cursor:pointer}
 .brand-mark{
-  width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,#10b981,#06b6d4);
-  display:grid;place-items:center;color:#fff;box-shadow:0 0 22px rgba(16,185,129,0.4);
+  width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,#f59e0b,#8b5cf6);
+  display:grid;place-items:center;color:#fff;box-shadow:0 0 24px rgba(245,158,11,0.4);
 }
 .brand-mark .icon{width:22px;height:22px}
-.brand strong{display:block;color:#fff;font-size:17px;letter-spacing:0.3px}
+.brand strong{display:block;color:#fff;font-size:18px;letter-spacing:0.3px}
 .brand span{font-size:11px;color:var(--accent);font-weight:800;text-transform:uppercase;letter-spacing:1.1px}
 
 .home-return-btn{
   display:flex;align-items:center;gap:10px;width:100%;padding:11px 14px;margin-bottom:22px;
-  border:1px solid rgba(16,185,129,0.35);border-radius:12px;background:rgba(16,185,129,0.08);
-  color:#6ee7b7;font-weight:700;font-size:13px;cursor:pointer;transition:all 0.25s;
+  border:1px solid rgba(245,158,11,0.4);border-radius:12px;background:rgba(245,158,11,0.1);
+  color:#fcd34d;font-weight:700;font-size:13px;cursor:pointer;transition:all 0.25s;
 }
-.home-return-btn:hover{background:rgba(16,185,129,0.18);transform:translateX(-2px);box-shadow:0 0 20px rgba(16,185,129,0.2)}
+.home-return-btn:hover{background:rgba(245,158,11,0.2);transform:translateX(-2px);box-shadow:0 0 20px rgba(245,158,11,0.2)}
 
 .nav{display:flex;flex-direction:column;gap:8px}
 .nav-label{font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;padding:0 12px 8px;color:var(--muted)}
 .nav-item{
   display:flex;align-items:center;gap:12px;width:100%;padding:12px 15px;border:1px solid transparent;border-radius:12px;
-  background:transparent;color:var(--muted);font-weight:600;text-align:left;cursor:pointer;transition:all 0.25s;
+  background:transparent;color:var(--muted);font-weight:600;text-align:left;cursor:pointer;
+  transition:all 0.28s cubic-bezier(0.22, 1, 0.36, 1);
 }
-.nav-item:hover{background:rgba(255,255,255,0.04);color:#fff;transform:translateX(4px)}
-.nav-item.active{background:var(--surface-2);color:#fff;box-shadow:inset 3px 0 0 var(--accent);border-color:var(--border)}
-.count{margin-left:auto;min-width:26px;padding:2px 8px;border-radius:999px;background:var(--ok-soft);color:var(--ok);font-size:11px;font-weight:800;text-align:center}
+.nav-item:hover{background:rgba(255,255,255,0.05);color:#fff;transform:translateX(4px)}
+.nav-item.active{
+  background:linear-gradient(90deg, rgba(245,158,11,0.16), rgba(139,92,246,0.12));
+  color:#fff;box-shadow:inset 3px 0 0 var(--accent);border-color:rgba(245,158,11,0.35);
+}
+.count{margin-left:auto;min-width:26px;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:800;text-align:center}
 
 .side-foot{margin-top:auto;padding:18px 12px 0;border-top:1px solid var(--border);font-size:12px;color:var(--muted)}
 .side-foot .lbl{text-transform:uppercase;letter-spacing:1px;font-size:10.5px;color:var(--accent);font-weight:800;margin-bottom:4px}
+.side-foot .author{margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);color:#ddd6fe;font-weight:700;font-size:11.5px}
 
-.main{padding:34px 44px 72px;width:100%;max-width:1320px}
+.main{padding:34px 44px 72px;width:100%;max-width:1320px;display:flex;flex-direction:column;min-height:100vh}
 .topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:28px}
 .topbar h1{margin:0;font-size:26px;font-weight:800;letter-spacing:-0.4px;color:var(--text)}
 .topbar p{margin:5px 0 0;color:var(--muted);font-size:14px}
-.status{display:inline-flex;align-items:center;gap:10px;padding:8px 16px;border:1px solid var(--border);border-radius:999px;background:var(--surface);font-size:12.5px;font-weight:700;white-space:nowrap}
+.status{display:inline-flex;align-items:center;gap:10px;padding:8px 16px;border:1px solid var(--border);border-radius:999px;background:rgba(14,11,31,0.85);font-size:12.5px;font-weight:700;white-space:nowrap}
 .dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
 .status.ok .dot{background:var(--ok);box-shadow:0 0 0 5px var(--ok-soft), 0 0 12px var(--ok)}
 .status.bad .dot{background:var(--danger);box-shadow:0 0 0 5px var(--danger-soft), 0 0 12px var(--danger)}
 
 .metrics-bar{display:grid;grid-template-columns:repeat(4, 1fr);gap:16px;margin-bottom:28px}
-.metric-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:18px 22px;box-shadow:var(--shadow);transition:all 0.25s}
+.metric-card{background:rgba(14,11,31,0.78);border:1px solid var(--border);border-radius:16px;padding:18px 22px;box-shadow:var(--shadow);backdrop-filter:blur(12px);transition:all 0.28s}
 .metric-card:hover{transform:translateY(-3px);border-color:var(--accent)}
 .metric-card .label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px}
 .metric-card .value{font-size:22px;font-weight:800;font-family:var(--mono);color:var(--text)}
 
-.panel{display:none}
-.panel.active{display:block;animation:panelReveal 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards}
-@keyframes panelReveal{from{opacity:0;transform:scale(0.97) translateY(12px)}to{opacity:1;transform:none}}
+/* Smooth Tab Switching Animations */
+.panel{display:none;will-change:transform,opacity}
+.panel.active{display:block}
+.panel.tab-entering{
+  animation:tabWebGlide 0.48s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes tabWebGlide{
+  0%{opacity:0;transform:translateY(16px) scale(0.985)}
+  100%{opacity:1;transform:translateY(0) scale(1)}
+}
 
-.card{background:var(--surface);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);margin-bottom:24px;overflow:hidden}
-.card-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 26px;border-bottom:1px solid var(--border);background:var(--surface-2)}
+.card{background:rgba(14,11,31,0.82);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);margin-bottom:24px;overflow:hidden;backdrop-filter:blur(14px)}
+.card-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 26px;border-bottom:1px solid var(--border);background:rgba(22,17,48,0.85)}
 .card-head h2{margin:0;font-size:17px;font-weight:750}
 .card-head p{margin:4px 0 0;color:var(--muted);font-size:13px}
 .card-body{padding:26px}
@@ -507,10 +522,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 label{display:block;margin-bottom:8px;font-size:11.5px;font-weight:800;color:var(--muted);letter-spacing:0.8px;text-transform:uppercase}
 .field{margin-bottom:20px}
 .field:last-child{margin-bottom:0}
-input,select,textarea{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:12px;padding:11px 16px;font:inherit;transition:all 0.2s}
+input,select,textarea{width:100%;background:rgba(6,4,15,0.85);color:var(--text);border:1px solid var(--border);border-radius:12px;padding:11px 16px;font:inherit;transition:all 0.2s}
 textarea{font-family:var(--mono);font-size:13.5px;resize:vertical;min-height:170px}
 input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);outline:none}
-.input-group{display:flex;align-items:stretch;border:1px solid var(--border);border-radius:12px;background:var(--bg);overflow:hidden}
+.input-group{display:flex;align-items:stretch;border:1px solid var(--border);border-radius:12px;background:rgba(6,4,15,0.85);overflow:hidden}
 .input-group:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 .input-group input{border:0;background:transparent;border-radius:0;font-family:var(--mono);font-size:13.5px;padding:11px 16px}
 .input-group input:focus-visible{outline:none}
@@ -520,17 +535,17 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 
 
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;padding:11px 22px;border-radius:12px;border:1px solid transparent;font-weight:700;cursor:pointer;white-space:nowrap;transition:all 0.25s}
 .btn-sm{padding:8px 15px;font-size:13px}
-.btn-primary{background:var(--accent);color:var(--accent-ink);box-shadow:0 4px 18px rgba(16,185,129,0.3)}
-.btn-primary:hover{background:var(--accent-hover);transform:translateY(-2px)}
+.btn-primary{background:linear-gradient(135deg,#f59e0b,#d97706);color:var(--accent-ink);box-shadow:0 4px 18px rgba(245,158,11,0.35);font-weight:800}
+.btn-primary:hover{filter:brightness(1.08);transform:translateY(-2px)}
 .btn-secondary{background:var(--surface-2);color:var(--text);border-color:var(--border)}
 .btn-secondary:hover{background:var(--border);transform:translateY(-2px)}
 .btn-danger-ghost{background:transparent;color:var(--danger);border-color:var(--border)}
 .btn-danger-ghost:hover{background:var(--danger-soft);border-color:var(--danger)}
 
-.seg{display:inline-flex;padding:5px;gap:6px;background:var(--bg);border:1px solid var(--border);border-radius:14px;margin-bottom:24px}
+.seg{display:inline-flex;padding:5px;gap:6px;background:rgba(6,4,15,0.85);border:1px solid var(--border);border-radius:14px;margin-bottom:24px}
 .seg button{border:0;background:transparent;padding:8px 18px;border-radius:10px;font-weight:700;color:var(--muted);cursor:pointer;transition:all 0.2s}
 .seg button:hover{color:var(--text)}
-.seg button.active{background:var(--surface-2);color:var(--text);border:1px solid var(--border)}
+.seg button.active{background:var(--surface-2);color:#fcd34d;border:1px solid rgba(245,158,11,0.35)}
 
 .templates-bar{display:flex;gap:10px;margin-bottom:22px;flex-wrap:wrap}
 .template-chip{background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:7px 13px;border-radius:10px;font-size:12.5px;font-weight:700;cursor:pointer;transition:all 0.2s}
@@ -545,10 +560,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 
 .hint b{color:var(--text)}
 
 .tag{font-family:var(--mono);font-weight:800;font-size:13px;text-align:center;cursor:default;border:1px solid;user-select:all}
-.tag-blue{color:var(--info);background:var(--info-soft);border-color:rgba(56,189,248,0.3)}
-.tag-violet{color:#a78bfa;background:var(--violet-soft);border-color:rgba(139,92,246,0.3)}
-.tag-amber{color:var(--warn);background:var(--warn-soft);border-color:rgba(245,158,11,0.3)}
-.tag-green{color:var(--ok);background:var(--ok-soft);border-color:rgba(16,185,129,0.3)}
+.tag-blue{color:var(--info);background:var(--info-soft);border-color:rgba(192,132,252,0.35)}
+.tag-violet{color:#c084fc;background:var(--violet-soft);border-color:rgba(139,92,246,0.35)}
+.tag-amber{color:var(--warn);background:var(--warn-soft);border-color:rgba(251,191,36,0.35)}
+.tag-green{color:var(--ok);background:var(--ok-soft);border-color:rgba(52,211,153,0.35)}
 
 .auth-row{display:grid;grid-template-columns:180px 130px minmax(0,1fr);gap:14px;align-items:end;margin-bottom:16px}
 .auth-row.two{grid-template-columns:180px minmax(0,1fr)}
@@ -561,7 +576,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 
 .toolbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:22px}
 .spacer{flex:1}
 
-.log{background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);margin-bottom:16px;overflow:hidden}
+.log{background:rgba(14,11,31,0.82);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);margin-bottom:16px;overflow:hidden;backdrop-filter:blur(12px)}
 .log-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:18px 24px}
 .log-title{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .log-id{font-family:var(--mono);font-size:13px;font-weight:700}
@@ -573,23 +588,29 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 
 .log summary:hover{color:var(--text)}
 .block{padding:0 24px 20px}
 .block-label{margin-bottom:8px;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
-pre{margin:0;padding:18px;background:var(--bg);border:1px solid var(--border);border-radius:12px;font:13px/1.6 var(--mono);overflow:auto;max-height:400px;white-space:pre-wrap;word-break:break-word}
+pre{margin:0;padding:18px;background:rgba(6,4,15,0.9);border:1px solid var(--border);border-radius:12px;font:13px/1.6 var(--mono);overflow:auto;max-height:400px;white-space:pre-wrap;word-break:break-word}
 .badge{display:inline-flex;align-items:center;padding:3px 11px;border-radius:999px;font-size:11.5px;font-weight:800}
-.b-info{background:var(--info-soft);color:var(--info);border:1px solid rgba(56,189,248,0.3)}
-.b-ok{background:var(--ok-soft);color:var(--ok);border:1px solid rgba(16,185,129,0.3)}
-.b-warn{background:var(--warn-soft);color:var(--warn);border:1px solid rgba(245,158,11,0.3)}
-.b-err{background:var(--danger-soft);color:var(--danger);border:1px solid rgba(239,68,68,0.3)}
-.b-neutral{background:var(--bg);color:var(--muted);border:1px solid var(--border)}
-.empty{display:grid;place-items:center;gap:10px;text-align:center;padding:70px 24px;border:1px dashed var(--border);border-radius:18px;color:var(--muted);background:var(--surface)}
+.b-info{background:var(--info-soft);color:var(--info);border:1px solid rgba(192,132,252,0.35)}
+.b-ok{background:var(--ok-soft);color:var(--ok);border:1px solid rgba(52,211,153,0.35)}
+.b-warn{background:var(--warn-soft);color:var(--warn);border:1px solid rgba(251,191,36,0.35)}
+.b-err{background:var(--danger-soft);color:var(--danger);border:1px solid rgba(251,113,133,0.35)}
+.b-neutral{background:rgba(6,4,15,0.85);color:var(--muted);border:1px solid var(--border)}
+.empty{display:grid;place-items:center;gap:10px;text-align:center;padding:70px 24px;border:1px dashed var(--border);border-radius:18px;color:var(--muted);background:rgba(14,11,31,0.75)}
 .empty .icon{width:34px;height:34px;color:var(--accent)}
 .empty strong{color:var(--text);font-size:16px}
 
+.workspace-footer{
+  margin-top:auto;padding-top:24px;border-top:1px solid rgba(43,35,82,0.6);
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;
+  color:var(--muted);font-size:12.5px;
+}
+
 .toasts{position:fixed;right:24px;bottom:24px;display:flex;flex-direction:column;gap:10px;z-index:120}
-.toast{min-width:270px;max-width:400px;padding:14px 18px;border-radius:12px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-left:4px solid var(--info);box-shadow:var(--shadow-lg);font-size:13.5px}
+.toast{min-width:270px;max-width:400px;padding:14px 18px;border-radius:12px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-left:4px solid var(--accent);box-shadow:var(--shadow-lg);font-size:13.5px}
 .toast.success{border-left-color:var(--ok)}
 .toast.error{border-left-color:var(--danger)}
 
-.modal{position:fixed;inset:0;background:rgba(2,4,10,0.85);display:grid;place-items:center;padding:24px;z-index:130;backdrop-filter:blur(10px)}
+.modal{position:fixed;inset:0;background:rgba(6,4,15,0.85);display:grid;place-items:center;padding:24px;z-index:130;backdrop-filter:blur(10px)}
 .dialog{width:100%;max-width:440px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:28px;box-shadow:var(--shadow-lg)}
 .dialog h3{margin:0 0 10px;font-size:19px;font-weight:800}
 .dialog p{margin:0 0 24px;color:var(--muted);font-size:14px}
@@ -625,7 +646,7 @@ pre{margin:0;padding:18px;background:var(--bg);border:1px solid var(--border);bo
   <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></symbol>
 </svg>
 
-<!-- Interactive SpiderWeb Canvas & Warp Flash -->
+<!-- Unified Interactive SpiderWeb Canvas & Warp Flash -->
 <canvas id="webCanvas"></canvas>
 <div id="warpFlash"></div>
 
@@ -635,17 +656,17 @@ pre{margin:0;padding:18px;background:var(--bg);border:1px solid var(--border);bo
     <div class="home-brand">
       <div class="home-logo"><svg class="icon"><use href="#i-web"/></svg></div>
       <div>
-        <strong>NexRelay</strong>
-        <span>SpiderWeb Nexus</span>
+        <strong>AetherWeb</strong>
+        <span>Quantum Mesh</span>
       </div>
     </div>
-    <div class="status" id="homeStatusPill"><span class="dot"></span><span id="homeStatusText">Synchronizing web…</span></div>
+    <div class="status" id="homeStatusPill"><span class="dot"></span><span id="homeStatusText">Synchronizing mesh…</span></div>
   </header>
 
   <div class="home-hero">
-    <div class="nexus-pill"><span class="pulse"></span>Bidirectional ServiceNow Integration Mesh</div>
-    <h1 class="hero-title">NexRelay · SpiderWeb Nexus</h1>
-    <p class="hero-sub">Move your cursor across the neural silk web, then select any node below to dive directly into your ServiceNow integration workspace.</p>
+    <div class="nexus-pill"><span class="pulse"></span>ServiceNow Quantum Integration Mesh</div>
+    <h1 class="hero-title">AetherWeb · Quantum Mesh</h1>
+    <p class="hero-sub">Glide your cursor across the golden-violet silk web, then click any portal node to dive seamlessly into your ServiceNow integration workspace.</p>
 
     <div class="portal-grid">
       <article class="portal-card" data-portal="inbound" tabindex="0" role="button">
@@ -687,7 +708,7 @@ pre{margin:0;padding:18px;background:var(--bg);border:1px solid var(--border);bo
   </div>
 
   <footer class="home-footer">
-    <div>Click any portal node to trigger a 3D warp dive into the web.</div>
+    <div>Crafted &amp; Engineered by <span class="creator-sig">Chadaram Veera Pavan</span></div>
     <div class="home-stats">
       <span>TRAFFIC: <b id="homeStatTotal">0</b></span>
       <span>UPTIME: <b id="homeStatUptime">0s</b></span>
@@ -698,13 +719,13 @@ pre{margin:0;padding:18px;background:var(--bg);border:1px solid var(--border);bo
 <!-- ==================== WORKSPACE VIEW ==================== -->
 <div id="workspaceView" class="app" hidden>
   <aside class="sidebar">
-    <div class="brand" id="brandHomeBtn" title="Return to SpiderWeb Homepage">
+    <div class="brand" id="brandHomeBtn" title="Return to AetherWeb Homepage">
       <div class="brand-mark"><svg class="icon"><use href="#i-web"/></svg></div>
-      <div><strong>NexRelay</strong><span>SpiderWeb Nexus</span></div>
+      <div><strong>AetherWeb</strong><span>Quantum Mesh</span></div>
     </div>
 
     <button type="button" class="home-return-btn" id="returnHomeBtn">
-      <svg class="icon"><use href="#i-home"/></svg>SpiderWeb Home
+      <svg class="icon"><use href="#i-home"/></svg>AetherWeb Home
     </button>
 
     <div class="nav-label">Workspace Nodes</div>
@@ -716,6 +737,7 @@ pre{margin:0;padding:18px;background:var(--bg);border:1px solid var(--border);bo
     <div class="side-foot">
       <div class="lbl">Mesh Status</div>
       <div>Universal listener active (All HTTP Methods).</div>
+      <div class="author">By Chadaram Veera Pavan</div>
     </div>
   </aside>
 
@@ -964,7 +986,7 @@ pre{margin:0;padding:18px;background:var(--bg);border:1px solid var(--border);bo
           <div class="tab-panel" data-panel-group="pm" id="pm-body" hidden>
             <label for="httpBody">Raw JSON Body</label>
             <textarea id="httpBody" rows="8" spellcheck="false">{
-  "short_description": "Automated incident created via SpiderWeb Nexus",
+  "short_description": "Automated incident created via AetherWeb Quantum Mesh",
   "urgency": "2",
   "impact": "2",
   "category": "software"
@@ -987,6 +1009,11 @@ pre{margin:0;padding:18px;background:var(--bg);border:1px solid var(--border);bo
       </div>
       <div id="logsList"></div>
     </section>
+
+    <footer class="workspace-footer">
+      <div>AetherWeb · Quantum Mesh Integration Hub</div>
+      <div>Built &amp; Engineered by <span class="creator-sig">Chadaram Veera Pavan</span></div>
+    </footer>
   </main>
 </div>
 
@@ -1039,14 +1066,15 @@ pre{margin:0;padding:18px;background:var(--bg);border:1px solid var(--border);bo
     return isNaN(d) ? esc(iso) : esc(d.toLocaleString());
   }
 
-  /* ==================== 3D SPIDERWEB & WARP ILLUSION ENGINE ==================== */
+  /* ==================== UNIFIED SPIDERWEB & PULSE ENGINE ==================== */
   var canvas = $('webCanvas');
   var ctx = canvas.getContext('2d');
   var W = 0, H = 0;
   var mouse = { x: -9999, y: -9999, active: false };
-  var warp = { active: false, speed: 1, targetX: 0, targetY: 0, progress: 0 };
+  var warp = { active: false, targetX: 0, targetY: 0, progress: 0 };
+  var pulse = { active: false, progress: 0 };
   var nodes = [];
-  var NODE_COUNT = 85;
+  var NODE_COUNT = 82;
 
   function resizeCanvas() {
     W = canvas.width = window.innerWidth;
@@ -1061,10 +1089,11 @@ pre{margin:0;padding:18px;background:var(--bg);border:1px solid var(--border);bo
       nodes.push({
         x: Math.random() * W,
         y: Math.random() * H,
-        z: 0.2 + Math.random() * 0.8,
-        vx: (Math.random() - 0.5) * 0.55,
-        vy: (Math.random() - 0.5) * 0.55,
-        r: 1.5 + Math.random() * 2.2
+        z: 0.25 + Math.random() * 0.75,
+        vx: (Math.random() - 0.5) * 0.45,
+        vy: (Math.random() - 0.5) * 0.45,
+        r: 1.6 + Math.random() * 2.1,
+        gold: Math.random() > 0.45
       });
     }
   }
@@ -1079,37 +1108,49 @@ pre{margin:0;padding:18px;background:var(--bg);border:1px solid var(--border);bo
     mouse.active = false;
   });
 
+  function triggerWebPulse() {
+    pulse.active = true;
+    pulse.progress = 0;
+  }
+
   function renderWebLoop() {
     ctx.clearRect(0, 0, W, H);
 
     var cx = warp.active ? warp.targetX : W * 0.5;
     var cy = warp.active ? warp.targetY : H * 0.45;
 
-    // Subtle geometric spiderweb rings anchored at center
+    if (pulse.active) {
+      pulse.progress += 0.035;
+      if (pulse.progress >= 1) {
+        pulse.active = false;
+        pulse.progress = 0;
+      }
+    }
+
+    // Geometric SpiderWeb Silk Rings (Cosmic Gold & Royal Violet)
     var ringCount = 5;
     var maxRadius = Math.max(W, H) * 0.62;
-    var scaleBoost = warp.active ? (1 + warp.progress * 3.5) : 1;
+    var scaleBoost = warp.active ? (1 + warp.progress * 2.8) : (pulse.active ? 1 + Math.sin(pulse.progress * Math.PI) * 0.08 : 1);
+    var webAlpha = warp.active ? 0.24 : (pulse.active ? 0.16 : 0.075);
 
     ctx.save();
-    ctx.strokeStyle = warp.active ? 'rgba(16, 185, 129, 0.22)' : 'rgba(56, 189, 248, 0.065)';
+    ctx.strokeStyle = 'rgba(139, 92, 246, ' + webAlpha + ')';
     ctx.lineWidth = 1;
 
-    // Radial spokes
     var spokes = 16;
     for (var s = 0; s < spokes; s++) {
-      var ang = (s / spokes) * Math.PI * 2 + (warp.progress * 0.25);
+      var ang = (s / spokes) * Math.PI * 2 + (warp.progress * 0.22);
       ctx.beginPath();
       ctx.moveTo(cx, cy);
       ctx.lineTo(cx + Math.cos(ang) * maxRadius * scaleBoost, cy + Math.sin(ang) * maxRadius * scaleBoost);
       ctx.stroke();
     }
 
-    // Concentric web silk polygons
     for (var r = 1; r <= ringCount; r++) {
       var rad = (r / ringCount) * maxRadius * scaleBoost;
       ctx.beginPath();
       for (var s2 = 0; s2 <= spokes; s2++) {
-        var a2 = (s2 / spokes) * Math.PI * 2 + (warp.progress * 0.25);
+        var a2 = (s2 / spokes) * Math.PI * 2 + (warp.progress * 0.22);
         var wobble = Math.sin(a2 * 3 + r) * 8;
         var px = cx + Math.cos(a2) * (rad + wobble);
         var py = cy + Math.sin(a2) * (rad + wobble);
@@ -1120,83 +1161,77 @@ pre{margin:0;padding:18px;background:var(--bg);border:1px solid var(--border);bo
     }
     ctx.restore();
 
-    // Update & draw floating web nodes
+    // Update & draw floating nodes
     for (var i = 0; i < nodes.length; i++) {
       var n = nodes[i];
 
       if (warp.active) {
-        // Accelerate nodes outward from focal dive point for 3D tunnel illusion
         var dx = n.x - warp.targetX;
         var dy = n.y - warp.targetY;
         var dist = Math.hypot(dx, dy) || 1;
-        var pull = (12 + warp.progress * 42) * n.z;
+        var pull = (10 + warp.progress * 34) * n.z;
         var prevX = n.x;
         var prevY = n.y;
         n.x += (dx / dist) * pull;
         n.y += (dy / dist) * pull;
 
-        // Draw streak line
         ctx.beginPath();
-        ctx.strokeStyle = 'rgba(110, 231, 183, ' + (0.35 + warp.progress * 0.5) + ')';
-        ctx.lineWidth = 1.8 * n.z;
+        ctx.strokeStyle = n.gold ? 'rgba(245, 158, 11, 0.55)' : 'rgba(167, 139, 250, 0.55)';
+        ctx.lineWidth = 1.6 * n.z;
         ctx.moveTo(prevX, prevY);
         ctx.lineTo(n.x, n.y);
         ctx.stroke();
 
-        // Respawn near center if flown offscreen during dive
         if (n.x < -50 || n.x > W + 50 || n.y < -50 || n.y > H + 50) {
           var spawnAng = Math.random() * Math.PI * 2;
-          var spawnDist = 20 + Math.random() * 90;
+          var spawnDist = 25 + Math.random() * 90;
           n.x = warp.targetX + Math.cos(spawnAng) * spawnDist;
           n.y = warp.targetY + Math.sin(spawnAng) * spawnDist;
         }
       } else {
-        n.x += n.vx * n.z;
-        n.y += n.vy * n.z;
+        var speedMult = pulse.active ? (1 + Math.sin(pulse.progress * Math.PI) * 2.2) : 1;
+        n.x += n.vx * n.z * speedMult;
+        n.y += n.vy * n.z * speedMult;
 
         if (n.x < 0 || n.x > W) n.vx *= -1;
         if (n.y < 0 || n.y > H) n.vy *= -1;
 
-        // Subtle cursor attraction
         if (mouse.active) {
           var mdx = mouse.x - n.x;
           var mdy = mouse.y - n.y;
           var mdist = Math.hypot(mdx, mdy);
           if (mdist < 210 && mdist > 1) {
-            n.x += (mdx / mdist) * 0.45;
-            n.y += (mdy / mdist) * 0.45;
+            n.x += (mdx / mdist) * 0.4;
+            n.y += (mdy / mdist) * 0.4;
           }
         }
       }
 
-      // Draw node glow
       ctx.beginPath();
-      ctx.fillStyle = warp.active ? '#6ee7b7' : 'rgba(16, 185, 129, 0.75)';
+      ctx.fillStyle = n.gold ? 'rgba(245, 158, 11, 0.85)' : 'rgba(167, 139, 250, 0.85)';
       ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
       ctx.fill();
 
-      // Connect nearby nodes with silk threads
       if (!warp.active) {
         for (var j = i + 1; j < nodes.length; j++) {
           var n2 = nodes[j];
           var d = Math.hypot(n.x - n2.x, n.y - n2.y);
           if (d < 135) {
             ctx.beginPath();
-            ctx.strokeStyle = 'rgba(16, 185, 129, ' + ((1 - d / 135) * 0.24) + ')';
-            ctx.lineWidth = 0.9;
+            ctx.strokeStyle = 'rgba(139, 92, 246, ' + ((1 - d / 135) * 0.24) + ')';
+            ctx.lineWidth = 0.85;
             ctx.moveTo(n.x, n.y);
             ctx.lineTo(n2.x, n2.y);
             ctx.stroke();
           }
         }
 
-        // Silk strands tethered to cursor
         if (mouse.active) {
           var cmDist = Math.hypot(n.x - mouse.x, n.y - mouse.y);
           if (cmDist < 190) {
             ctx.beginPath();
-            ctx.strokeStyle = 'rgba(6, 182, 212, ' + ((1 - cmDist / 190) * 0.55) + ')';
-            ctx.lineWidth = 1.2;
+            ctx.strokeStyle = 'rgba(245, 158, 11, ' + ((1 - cmDist / 190) * 0.55) + ')';
+            ctx.lineWidth = 1.15;
             ctx.moveTo(n.x, n.y);
             ctx.lineTo(mouse.x, mouse.y);
             ctx.stroke();
@@ -1209,7 +1244,7 @@ pre{margin:0;padding:18px;background:var(--bg);border:1px solid var(--border);bo
   }
   requestAnimationFrame(renderWebLoop);
 
-  /* ==================== VIEW & PORTAL TRANSITIONS ==================== */
+  /* ==================== SILKY SMOOTH VIEW & TAB TRANSITIONS ==================== */
   function diveIntoWorkspace(targetPanel, clickEvent, pushHistory) {
     if (state.warping) return;
     state.warping = true;
@@ -1220,9 +1255,6 @@ pre{margin:0;padding:18px;background:var(--bg);border:1px solid var(--border);bo
       var rect = clickEvent.currentTarget.getBoundingClientRect();
       tx = rect.left + rect.width / 2;
       ty = rect.top + rect.height / 2;
-    } else if (clickEvent && typeof clickEvent.clientX === 'number') {
-      tx = clickEvent.clientX;
-      ty = clickEvent.clientY;
     }
 
     warp.active = true;
@@ -1240,11 +1272,14 @@ pre{margin:0;padding:18px;background:var(--bg);border:1px solid var(--border);bo
     homeEl.classList.add('diving');
 
     var start = performance.now();
-    var duration = 620;
+    var duration = 560;
 
     function stepWarp(now) {
-      var t = Math.min(1, (now - start) / duration);
-      warp.progress = t * t;
+      var elapsed = now - start;
+      var t = Math.min(1, elapsed / duration);
+      // Smooth ease-in-out quintic curve
+      warp.progress = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
       if (t < 1) {
         requestAnimationFrame(stepWarp);
       } else {
@@ -1263,7 +1298,7 @@ pre{margin:0;padding:18px;background:var(--bg);border:1px solid var(--border);bo
 
         state.view = 'workspace';
         state.warping = false;
-        selectPanel(targetPanel, pushHistory);
+        selectPanel(targetPanel, pushHistory, true);
       }
     }
     requestAnimationFrame(stepWarp);
@@ -1272,6 +1307,7 @@ pre{margin:0;padding:18px;background:var(--bg);border:1px solid var(--border);bo
   function returnToHome(pushHistory) {
     if (state.warping) return;
     state.view = 'home';
+    triggerWebPulse();
 
     var wsEl = $('workspaceView');
     wsEl.hidden = true;
@@ -1289,18 +1325,33 @@ pre{margin:0;padding:18px;background:var(--bg);border:1px solid var(--border);bo
     }
   }
 
-  function selectPanel(name, pushHistory) {
+  function selectPanel(name, pushHistory, skipPulse) {
+    var changed = state.panel !== name;
     state.panel = name;
+
+    if (changed && !skipPulse) {
+      triggerWebPulse();
+    }
+
     Array.prototype.forEach.call(document.querySelectorAll('.panel'), function (p) {
-      p.classList.toggle('active', p.id === 'panel-' + name);
+      var isTarget = p.id === 'panel-' + name;
+      p.classList.toggle('active', isTarget);
+      p.classList.remove('tab-entering');
+      if (isTarget) {
+        void p.offsetWidth;
+        p.classList.add('tab-entering');
+      }
     });
+
     Array.prototype.forEach.call(document.querySelectorAll('.nav-item'), function (b) {
       b.classList.toggle('active', b.getAttribute('data-panel') === name);
     });
+
     if (PAGES[name]) {
       $('pageTitle').textContent = PAGES[name][0];
       $('pageSub').textContent = PAGES[name][1];
     }
+
     if (pushHistory) {
       history.pushState({ view: 'workspace', panel: name }, '', '/hub/' + name);
     }
@@ -1417,7 +1468,7 @@ pre{margin:0;padding:18px;background:var(--bg);border:1px solid var(--border);bo
     if (!c) { box.textContent = 'Loading credentials…'; return; }
     var url = $('inboundUrlBox').value;
     var tail = "  -H 'Content-Type: application/json' \\\n" +
-      "  -d '{\"short_description\":\"Test payload from SpiderWeb Nexus\"}'";
+      "  -d '{\"short_description\":\"Test payload from AetherWeb Quantum Mesh\"}'";
     var head = "curl -X POST '" + url + "' \\\n";
     var out;
     if (state.credTab === 'cred-basic') {
@@ -1620,7 +1671,7 @@ pre{margin:0;padding:18px;background:var(--bg);border:1px solid var(--border);bo
       methodInput.value = 'POST';
       urlInput.value = 'https://dev_instance.service-now.com/api/now/table/incident';
       bodyInput.value = JSON.stringify({
-        short_description: "Automated incident created via SpiderWeb Nexus",
+        short_description: "Automated incident created via AetherWeb Quantum Mesh",
         urgency: "2",
         impact: "2",
         category: "hardware"
@@ -1704,7 +1755,7 @@ pre{margin:0;padding:18px;background:var(--bg);border:1px solid var(--border);bo
       pill.classList.toggle('bad', !ok);
     });
     $('statusText').textContent = ok ? 'Gateway online' : 'Gateway offline';
-    $('homeStatusText').textContent = ok ? 'Nexus mesh online' : 'Mesh offline';
+    $('homeStatusText').textContent = ok ? 'Quantum mesh online' : 'Mesh offline';
     if (typeof uptime === 'number') {
       $('homeStatUptime').textContent = uptime + 's';
     }
@@ -1720,7 +1771,6 @@ pre{margin:0;padding:18px;background:var(--bg);border:1px solid var(--border);bo
     var t = e.target;
     var el;
 
-    // Portal cards on Homepage -> Dive into SpiderWeb illusion
     if ((el = t.closest('[data-portal]'))) {
       diveIntoWorkspace(el.getAttribute('data-portal'), { currentTarget: el }, true);
       return;
@@ -1800,9 +1850,9 @@ pre{margin:0;padding:18px;background:var(--bg);border:1px solid var(--border);bo
     $('homeView').hidden = true;
     $('workspaceView').hidden = false;
     state.view = 'workspace';
-    if (initPath.includes('/outbound')) selectPanel('outbound', false);
-    else if (initPath.includes('/logs')) selectPanel('logs', false);
-    else selectPanel('inbound', false);
+    if (initPath.includes('/outbound')) selectPanel('outbound', false, true);
+    else if (initPath.includes('/logs')) selectPanel('logs', false, true);
+    else selectPanel('inbound', false, true);
   } else {
     $('homeView').hidden = false;
     $('workspaceView').hidden = true;
@@ -1836,5 +1886,5 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`NexRelay SpiderWeb Nexus running on port ${PORT}`);
+    console.log(`AetherWeb Quantum Mesh running on port ${PORT}`);
 });
