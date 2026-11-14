@@ -165,8 +165,7 @@ app.post('/api/servicenow/oauth/token', (req, res) => {
     res.json({ access_token: accessToken, token_type: 'Bearer', expires_in: OAUTH_TOKEN_TTL_S });
 });
 
-// Clean Inbound Webhook Endpoint
-app.post('/api/servicenow/inbound', (req, res) => {
+app.all('/api/servicenow/inbound', (req, res) => {
     const authMethod = authenticateInbound(req);
     if (!authMethod) {
         res.set('WWW-Authenticate', 'Bearer realm="NexRelay"');
@@ -180,17 +179,18 @@ app.post('/api/servicenow/inbound', (req, res) => {
     const inboundEntry = {
         id: syncId,
         direction: 'INBOUND',
+        method: req.method,
         authMethod,
         timestamp: new Date().toISOString(),
         headers: { 'content-type': req.headers['content-type'] },
+        query: req.query,
         payload: req.body
     };
 
     addLog(globalStore.inbound, inboundEntry);
-    res.status(200).json({ status: 'Success', message: 'Inbound ServiceNow payload successfully ingested.', record: inboundEntry });
+    res.status(200).json({ status: 'Success', message: `Inbound ${req.method} request successfully ingested.`, record: inboundEntry });
 });
 
-// Outbound Proxy
 app.post('/api/servicenow/outbound', async (req, res) => {
     const { method, url, authType, basicUser, basicPass, bearerToken, apiKeyHeaderName, apiKeyValue, headers, body } = req.body || {};
 
@@ -289,205 +289,321 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok', uptimeSeconds: Math.round(process.uptime()) });
 });
 
-// ---- Stunning Animated Frontend UI (Matrix Edition) ----
+// ---- Interactive SpiderWeb Nexus Frontend ----
 const PAGE = String.raw`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NexRelay · Matrix Command Center</title>
+<title>NexRelay · SpiderWeb Nexus</title>
 <style>
 :root{
-  --bg:#010409;--surface:#0d1117;--surface-2:#161b22;--border:#30363d;--border-strong:#484f58;
-  --text:#f0f6fc;--muted:#8b949e;--accent:#2ea043;--accent-hover:#238636;--accent-ink:#ffffff;--accent-soft:rgba(46,160,67,0.15);
-  --danger:#f85149;--danger-soft:rgba(248,81,73,0.15);--ok:#3fb950;--ok-soft:rgba(63,185,80,0.15);
-  --warn:#d29922;--warn-soft:rgba(210,153,34,0.15);--info:#58a6ff;--info-soft:rgba(88,166,255,0.15);
-  --side:#010409;--side-active:#1f6feb26;
-  --shadow:0 16px 32px rgba(1,4,9,0.8), 0 0 20px rgba(46,160,67,0.1);
-  --shadow-lg:0 24px 64px rgba(1,4,9,0.95), 0 0 40px rgba(46,160,67,0.2);
+  --bg:#02040a;--surface:#0a0e1a;--surface-2:#111729;--border:#1e293b;--border-strong:#334155;
+  --text:#f8fafc;--muted:#94a3b8;--accent:#10b981;--accent-hover:#059669;--accent-ink:#ffffff;--accent-soft:rgba(16,185,129,0.14);
+  --cyan:#06b6d4;--cyan-soft:rgba(6,182,212,0.14);--violet:#8b5cf6;--violet-soft:rgba(139,92,246,0.14);
+  --danger:#ef4444;--danger-soft:rgba(239,68,68,0.14);--ok:#10b981;--ok-soft:rgba(16,185,129,0.14);
+  --warn:#f59e0b;--warn-soft:rgba(245,158,11,0.14);--info:#38bdf8;--info-soft:rgba(56,189,248,0.14);
+  --shadow:0 16px 36px rgba(0,0,0,0.75);
+  --shadow-lg:0 28px 70px rgba(0,0,0,0.9), 0 0 32px rgba(16,185,129,0.15);
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   color-scheme:dark;
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
-
-/* Animated Cyber Matrix Background Glow */
-body::before{
-  content:'';position:fixed;inset:0;z-index:-1;
-  background: radial-gradient(circle at 15% 15%, rgba(46,160,67,0.08) 0%, transparent 40%),
-              radial-gradient(circle at 85% 85%, rgba(88,166,255,0.08) 0%, transparent 40%),
-              linear-gradient(to right, rgba(48,54,61,0.15) 1px, transparent 1px),
-              linear-gradient(to bottom, rgba(48,54,61,0.15) 1px, transparent 1px);
-  background-size: 100% 100%, 100% 100%, 50px 50px, 50px 50px;
-  animation: bgPulse 8s ease-in-out infinite alternate;
-}
-@keyframes bgPulse{0%{opacity:0.8}100%{opacity:1}}
-
 [hidden]{display:none!important}
 button{font:inherit}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .icon{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
-.app{display:grid;grid-template-columns:280px minmax(0,1fr);min-height:100vh;animation: appEntrance 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards}
-@keyframes appEntrance{from{opacity:0;transform:translateY(15px) scale(0.99)}to{opacity:1;transform:none}}
+/* Interactive SpiderWeb Canvas */
+#webCanvas{
+  position:fixed;inset:0;width:100vw;height:100vh;z-index:0;pointer-events:none;
+  background:radial-gradient(circle at 50% 45%, #091326 0%, #02040a 75%);
+}
 
-.sidebar{background:var(--side);color:var(--muted);display:flex;flex-direction:column;padding:30px 20px;position:sticky;top:0;height:100vh;border-right:1px solid var(--border);backdrop-filter:blur(16px)}
-.brand{display:flex;align-items:center;gap:14px;padding:4px 8px 36px}
-.brand-mark{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#2ea043,#1f6feb);display:grid;place-items:center;color:#fff;box-shadow:0 0 25px rgba(46,160,67,0.4);animation: iconFloat 4s ease-in-out infinite}
-@keyframes iconFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
-.brand-mark .icon{width:24px;height:24px}
-.brand strong{display:block;color:#fff;font-size:18px;letter-spacing:0.3px}
-.brand span{font-size:11.5px;color:var(--ok);font-weight:700;text-transform:uppercase;letter-spacing:1px}
+/* Warp Illusion Overlay */
+#warpFlash{
+  position:fixed;inset:0;z-index:100;pointer-events:none;opacity:0;
+  background:radial-gradient(circle at var(--wx, 50%) var(--wy, 50%), rgba(16,185,129,0.35), rgba(6,182,212,0.15) 35%, rgba(2,4,10,0.96) 75%);
+  transition:opacity 0.25s ease;
+}
+#warpFlash.active{opacity:1}
+
+/* ==================== SPIDERWEB HOMEPAGE ==================== */
+.home-view{
+  position:relative;z-index:10;min-height:100vh;display:flex;flex-direction:column;justify-content:space-between;
+  padding:28px 48px 36px;transition:transform 0.6s cubic-bezier(0.7, 0, 0.2, 1), opacity 0.5s ease, filter 0.5s ease;
+}
+.home-view.diving{
+  transform:scale(1.65);opacity:0;filter:blur(8px);pointer-events:none;
+}
+.home-view.entering{
+  animation:homeUnwarp 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes homeUnwarp{
+  from{transform:scale(1.4);opacity:0;filter:blur(6px)}
+  to{transform:scale(1);opacity:1;filter:blur(0)}
+}
+
+.home-nav{display:flex;align-items:center;justify-content:space-between;max-width:1280px;width:100%;margin:0 auto}
+.home-brand{display:flex;align-items:center;gap:14px}
+.home-logo{
+  width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,#10b981,#06b6d4);
+  display:grid;place-items:center;color:#fff;box-shadow:0 0 24px rgba(16,185,129,0.45);
+}
+.home-brand strong{font-size:19px;letter-spacing:0.4px;display:block;line-height:1.1}
+.home-brand span{font-size:11px;font-weight:800;letter-spacing:1.6px;text-transform:uppercase;color:var(--accent)}
+
+.home-hero{
+  max-width:1180px;width:100%;margin:auto;text-align:center;padding:32px 0;
+}
+.nexus-pill{
+  display:inline-flex;align-items:center;gap:10px;padding:7px 18px;border-radius:999px;
+  background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.35);
+  color:#6ee7b7;font-size:12px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;
+  margin-bottom:24px;backdrop-filter:blur(10px);
+}
+.nexus-pill .pulse{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent);animation:pulseDot 2s infinite}
+@keyframes pulseDot{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.5);opacity:0.5}}
+
+.hero-title{
+  margin:0 auto 18px;font-size:clamp(38px, 6vw, 68px);font-weight:900;letter-spacing:-1.5px;line-height:1.06;
+  background:linear-gradient(135deg, #ffffff 25%, #6ee7b7 60%, #38bdf8 95%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  text-shadow:0 12px 40px rgba(16,185,129,0.18);
+}
+.hero-sub{
+  max-width:640px;margin:0 auto 48px;color:var(--muted);font-size:16.5px;line-height:1.65;
+}
+
+/* Spiderweb Portal Cards */
+.portal-grid{
+  display:grid;grid-template-columns:repeat(3, 1fr);gap:24px;text-align:left;
+}
+.portal-card{
+  position:relative;background:rgba(10,14,26,0.72);border:1px solid rgba(51,65,85,0.65);
+  border-radius:22px;padding:30px 28px;cursor:pointer;backdrop-filter:blur(16px);
+  transition:all 0.35s cubic-bezier(0.16, 1, 0.3, 1);overflow:hidden;
+  display:flex;flex-direction:column;justify-content:space-between;min-height:245px;
+  box-shadow:0 20px 45px rgba(0,0,0,0.6);
+}
+.portal-card::before{
+  content:'';position:absolute;inset:0;border-radius:22px;padding:1.5px;
+  background:linear-gradient(135deg, rgba(16,185,129,0.6), rgba(6,182,212,0.2), transparent 65%);
+  -webkit-mask:linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;opacity:0.4;transition:opacity 0.35s;
+}
+.portal-card:hover{
+  transform:translateY(-8px) scale(1.02);
+  border-color:rgba(16,185,129,0.7);
+  background:rgba(15,23,42,0.88);
+  box-shadow:0 28px 60px rgba(0,0,0,0.85), 0 0 35px rgba(16,185,129,0.25);
+}
+.portal-card:hover::before{opacity:1}
+
+.portal-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.portal-icon{
+  width:48px;height:48px;border-radius:14px;display:grid;place-items:center;
+  background:var(--accent-soft);color:var(--accent);border:1px solid rgba(16,185,129,0.3);
+  transition:transform 0.35s ease, background 0.35s ease;
+}
+.portal-card[data-portal="outbound"] .portal-icon{background:var(--cyan-soft);color:var(--cyan);border-color:rgba(6,182,212,0.3)}
+.portal-card[data-portal="logs"] .portal-icon{background:var(--violet-soft);color:var(--violet);border-color:rgba(139,92,246,0.3)}
+.portal-card:hover .portal-icon{transform:scale(1.1) rotate(-4deg)}
+.portal-icon .icon{width:22px;height:22px}
+
+.portal-tag{
+  font-family:var(--mono);font-size:11px;font-weight:800;padding:4px 10px;border-radius:999px;
+  background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--muted);
+}
+.portal-card h3{margin:0 0 8px;font-size:20px;font-weight:800;color:var(--text)}
+.portal-card p{margin:0 0 22px;font-size:13.5px;color:var(--muted);line-height:1.55}
+.portal-cta{
+  display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:800;
+  color:var(--accent);letter-spacing:0.3px;transition:gap 0.25s;
+}
+.portal-card[data-portal="outbound"] .portal-cta{color:var(--cyan)}
+.portal-card[data-portal="logs"] .portal-cta{color:#a78bfa}
+.portal-card:hover .portal-cta{gap:13px}
+
+.home-footer{
+  max-width:1280px;width:100%;margin:0 auto;display:flex;align-items:center;justify-content:space-between;
+  padding-top:20px;border-top:1px solid rgba(30,41,59,0.6);color:var(--muted);font-size:12.5px;
+}
+.home-stats{display:flex;gap:24px;font-family:var(--mono)}
+.home-stats b{color:var(--text)}
+
+/* ==================== WORKSPACE SHELL ==================== */
+.app{
+  position:relative;z-index:10;display:grid;grid-template-columns:275px minmax(0,1fr);min-height:100vh;
+  background:rgba(2,4,10,0.82);backdrop-filter:blur(14px);
+}
+.app.unwarping{
+  animation:appUnwarp 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes appUnwarp{
+  0%{opacity:0;transform:scale(0.84);filter:blur(8px)}
+  100%{opacity:1;transform:scale(1);filter:blur(0)}
+}
+
+.sidebar{
+  background:rgba(10,14,26,0.92);color:var(--muted);display:flex;flex-direction:column;
+  padding:28px 18px;position:sticky;top:0;height:100vh;border-right:1px solid var(--border);
+}
+.brand{display:flex;align-items:center;gap:14px;padding:4px 8px 24px;cursor:pointer}
+.brand-mark{
+  width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,#10b981,#06b6d4);
+  display:grid;place-items:center;color:#fff;box-shadow:0 0 22px rgba(16,185,129,0.4);
+}
+.brand-mark .icon{width:22px;height:22px}
+.brand strong{display:block;color:#fff;font-size:17px;letter-spacing:0.3px}
+.brand span{font-size:11px;color:var(--accent);font-weight:800;text-transform:uppercase;letter-spacing:1.1px}
+
+.home-return-btn{
+  display:flex;align-items:center;gap:10px;width:100%;padding:11px 14px;margin-bottom:22px;
+  border:1px solid rgba(16,185,129,0.35);border-radius:12px;background:rgba(16,185,129,0.08);
+  color:#6ee7b7;font-weight:700;font-size:13px;cursor:pointer;transition:all 0.25s;
+}
+.home-return-btn:hover{background:rgba(16,185,129,0.18);transform:translateX(-2px);box-shadow:0 0 20px rgba(16,185,129,0.2)}
 
 .nav{display:flex;flex-direction:column;gap:8px}
-.nav-label{font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;padding:0 12px 10px;color:var(--muted)}
-.nav-item{display:flex;align-items:center;gap:12px;width:100%;padding:13px 16px;border:0;border-radius:12px;background:transparent;color:var(--muted);font-weight:600;text-align:left;cursor:pointer;transition:all 0.25s cubic-bezier(0.4, 0, 0.2, 1);position:relative;overflow:hidden}
+.nav-label{font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;padding:0 12px 8px;color:var(--muted)}
+.nav-item{
+  display:flex;align-items:center;gap:12px;width:100%;padding:12px 15px;border:1px solid transparent;border-radius:12px;
+  background:transparent;color:var(--muted);font-weight:600;text-align:left;cursor:pointer;transition:all 0.25s;
+}
 .nav-item:hover{background:rgba(255,255,255,0.04);color:#fff;transform:translateX(4px)}
-.nav-item.active{background:var(--surface-2);color:#fff;box-shadow:inset 3px 0 0 var(--accent);border:1px solid var(--border)}
-.count{margin-left:auto;min-width:26px;padding:3px 8px;border-radius:999px;background:var(--ok-soft);color:var(--ok);font-size:11px;font-weight:700;text-align:center}
+.nav-item.active{background:var(--surface-2);color:#fff;box-shadow:inset 3px 0 0 var(--accent);border-color:var(--border)}
+.count{margin-left:auto;min-width:26px;padding:2px 8px;border-radius:999px;background:var(--ok-soft);color:var(--ok);font-size:11px;font-weight:800;text-align:center}
 
-.side-foot{margin-top:auto;padding:20px 14px 0;border-top:1px solid var(--border);font-size:12px;color:var(--muted)}
-.side-foot .lbl{text-transform:uppercase;letter-spacing:1px;font-size:10.5px;color:var(--ok);font-weight:800;margin-bottom:6px}
+.side-foot{margin-top:auto;padding:18px 12px 0;border-top:1px solid var(--border);font-size:12px;color:var(--muted)}
+.side-foot .lbl{text-transform:uppercase;letter-spacing:1px;font-size:10.5px;color:var(--accent);font-weight:800;margin-bottom:4px}
 
-.main{padding:36px 48px 72px;width:100%;max-width:1340px;animation: mainSlide 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards}
-@keyframes mainSlide{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+.main{padding:34px 44px 72px;width:100%;max-width:1320px}
+.topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:28px}
+.topbar h1{margin:0;font-size:26px;font-weight:800;letter-spacing:-0.4px;color:var(--text)}
+.topbar p{margin:5px 0 0;color:var(--muted);font-size:14px}
+.status{display:inline-flex;align-items:center;gap:10px;padding:8px 16px;border:1px solid var(--border);border-radius:999px;background:var(--surface);font-size:12.5px;font-weight:700;white-space:nowrap}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+.status.ok .dot{background:var(--ok);box-shadow:0 0 0 5px var(--ok-soft), 0 0 12px var(--ok)}
+.status.bad .dot{background:var(--danger);box-shadow:0 0 0 5px var(--danger-soft), 0 0 12px var(--danger)}
 
-.topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:32px}
-.topbar h1{margin:0;font-size:28px;font-weight:800;letter-spacing:-0.5px;color:var(--text)}
-.topbar p{margin:6px 0 0;color:var(--muted);font-size:14px}
-.status{display:inline-flex;align-items:center;gap:10px;padding:9px 18px;border:1px solid var(--border);border-radius:999px;background:var(--surface);font-size:12.5px;font-weight:700;white-space:nowrap;box-shadow:var(--shadow)}
-.dot{width:9px;height:9px;border-radius:50%;background:var(--muted);transition:all 0.3s}
-.status.ok .dot{background:var(--ok);box-shadow:0 0 0 6px var(--ok-soft), 0 0 15px var(--ok)}
-.status.bad .dot{background:var(--danger);box-shadow:0 0 0 6px var(--danger-soft), 0 0 15px var(--danger)}
-
-/* Telemetry Metrics Grid */
-.metrics-bar{display:grid;grid-template-columns:repeat(4, 1fr);gap:18px;margin-bottom:32px}
-.metric-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px 24px;box-shadow:var(--shadow);transition:all 0.3s cubic-bezier(0.4, 0, 0.2, 1);position:relative;overflow:hidden}
-.metric-card::after{content:'';position:absolute;top:0;left:0;width:100%;height:3px;background:linear-gradient(90deg, transparent, var(--accent), transparent);opacity:0;transition:opacity 0.3s}
-.metric-card:hover{transform:translateY(-4px);border-color:var(--accent);box-shadow:var(--shadow-lg)}
-.metric-card:hover::after{opacity:1}
-.metric-card .label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px}
-.metric-card .value{font-size:24px;font-weight:800;font-family:var(--mono);color:var(--text)}
+.metrics-bar{display:grid;grid-template-columns:repeat(4, 1fr);gap:16px;margin-bottom:28px}
+.metric-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:18px 22px;box-shadow:var(--shadow);transition:all 0.25s}
+.metric-card:hover{transform:translateY(-3px);border-color:var(--accent)}
+.metric-card .label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px}
+.metric-card .value{font-size:22px;font-weight:800;font-family:var(--mono);color:var(--text)}
 
 .panel{display:none}
-.panel.active{display:block;animation: panelReveal 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards}
-@keyframes panelReveal{from{opacity:0;transform:scale(0.99) translateY(10px)}to{opacity:1;transform:none}}
+.panel.active{display:block;animation:panelReveal 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards}
+@keyframes panelReveal{from{opacity:0;transform:scale(0.97) translateY(12px)}to{opacity:1;transform:none}}
 
-.card{background:var(--surface);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);margin-bottom:28px;overflow:hidden;transition:border-color 0.3s}
-.card:hover{border-color:var(--border-strong)}
-.card-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:24px 28px;border-bottom:1px solid var(--border);background:var(--surface-2)}
-.card-head h2{margin:0;font-size:18px;font-weight:750}
-.card-head p{margin:6px 0 0;color:var(--muted);font-size:13.5px}
-.card-body{padding:28px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);margin-bottom:24px;overflow:hidden}
+.card-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 26px;border-bottom:1px solid var(--border);background:var(--surface-2)}
+.card-head h2{margin:0;font-size:17px;font-weight:750}
+.card-head p{margin:4px 0 0;color:var(--muted);font-size:13px}
+.card-body{padding:26px}
 
-label{display:block;margin-bottom:9px;font-size:11.5px;font-weight:800;color:var(--muted);letter-spacing:0.8px;text-transform:uppercase}
-.field{margin-bottom:22px}
+label{display:block;margin-bottom:8px;font-size:11.5px;font-weight:800;color:var(--muted);letter-spacing:0.8px;text-transform:uppercase}
+.field{margin-bottom:20px}
 .field:last-child{margin-bottom:0}
-input,select,textarea{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font:inherit;transition:all 0.25s cubic-bezier(0.4, 0, 0.2, 1)}
-textarea{font-family:var(--mono);font-size:13.5px;resize:vertical;min-height:180px}
-input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft);outline:none;background:var(--surface-2)}
-.input-group{display:flex;align-items:stretch;border:1px solid var(--border);border-radius:12px;background:var(--bg);overflow:hidden;transition:all 0.25s cubic-bezier(0.4, 0, 0.2, 1)}
-.input-group:focus-within{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
-.input-group input{border:0;background:transparent;border-radius:0;font-family:var(--mono);font-size:13.5px;padding:12px 18px}
+input,select,textarea{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:12px;padding:11px 16px;font:inherit;transition:all 0.2s}
+textarea{font-family:var(--mono);font-size:13.5px;resize:vertical;min-height:170px}
+input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);outline:none}
+.input-group{display:flex;align-items:stretch;border:1px solid var(--border);border-radius:12px;background:var(--bg);overflow:hidden}
+.input-group:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.input-group input{border:0;background:transparent;border-radius:0;font-family:var(--mono);font-size:13.5px;padding:11px 16px}
 .input-group input:focus-visible{outline:none}
-.icon-btn{display:inline-grid;place-items:center;width:48px;flex:none;border:0;border-left:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:all 0.2s}
+.icon-btn{display:inline-grid;place-items:center;width:46px;flex:none;border:0;border-left:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:all 0.2s}
 .icon-btn:hover{background:var(--accent-soft);color:var(--accent)}
-.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
 
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;padding:12px 24px;border-radius:12px;border:1px solid transparent;font-weight:700;cursor:pointer;white-space:nowrap;transition:all 0.25s cubic-bezier(0.4, 0, 0.2, 1);position:relative;overflow:hidden}
-.btn::after{content:'';position:absolute;inset:0;background:rgba(255,255,255,0.1);opacity:0;transition:opacity 0.2s}
-.btn:hover::after{opacity:1}
-.btn-sm{padding:8px 16px;font-size:13px}
-.btn-primary{background:var(--accent);color:var(--accent-ink);box-shadow:0 4px 20px rgba(46,160,67,0.35)}
-.btn-primary:hover{background:var(--accent-hover);transform:translateY(-2px);box-shadow:0 6px 25px rgba(46,160,67,0.5)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;padding:11px 22px;border-radius:12px;border:1px solid transparent;font-weight:700;cursor:pointer;white-space:nowrap;transition:all 0.25s}
+.btn-sm{padding:8px 15px;font-size:13px}
+.btn-primary{background:var(--accent);color:var(--accent-ink);box-shadow:0 4px 18px rgba(16,185,129,0.3)}
+.btn-primary:hover{background:var(--accent-hover);transform:translateY(-2px)}
 .btn-secondary{background:var(--surface-2);color:var(--text);border-color:var(--border)}
-.btn-secondary:hover{background:var(--border);border-color:var(--border-strong);transform:translateY(-2px)}
+.btn-secondary:hover{background:var(--border);transform:translateY(-2px)}
 .btn-danger-ghost{background:transparent;color:var(--danger);border-color:var(--border)}
-.btn-danger-ghost:hover{background:var(--danger-soft);border-color:var(--danger);transform:translateY(-2px)}
+.btn-danger-ghost:hover{background:var(--danger-soft);border-color:var(--danger)}
 
-.seg{display:inline-flex;padding:5px;gap:6px;background:var(--bg);border:1px solid var(--border);border-radius:14px;margin-bottom:28px}
-.seg button{border:0;background:transparent;padding:9px 20px;border-radius:10px;font-weight:700;color:var(--muted);cursor:pointer;transition:all 0.25s}
+.seg{display:inline-flex;padding:5px;gap:6px;background:var(--bg);border:1px solid var(--border);border-radius:14px;margin-bottom:24px}
+.seg button{border:0;background:transparent;padding:8px 18px;border-radius:10px;font-weight:700;color:var(--muted);cursor:pointer;transition:all 0.2s}
 .seg button:hover{color:var(--text)}
-.seg button.active{background:var(--surface-2);color:var(--text);box-shadow:var(--shadow);border:1px solid var(--border)}
+.seg button.active{background:var(--surface-2);color:var(--text);border:1px solid var(--border)}
 
-.templates-bar{display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap}
-.template-chip{background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:8px 14px;border-radius:10px;font-size:12.5px;font-weight:700;cursor:pointer;transition:all 0.25s;box-shadow:var(--shadow)}
-.template-chip:hover{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);transform:translateY(-2px)}
+.templates-bar{display:flex;gap:10px;margin-bottom:22px;flex-wrap:wrap}
+.template-chip{background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:7px 13px;border-radius:10px;font-size:12.5px;font-weight:700;cursor:pointer;transition:all 0.2s}
+.template-chip:hover{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
 
-.url-bar{display:grid;grid-template-columns:140px minmax(0,1fr) auto;gap:14px;margin-bottom:28px}
+.url-bar{display:grid;grid-template-columns:130px minmax(0,1fr) auto;gap:12px;margin-bottom:24px}
 .url-bar select{font-weight:800}
 .url-bar input{font-family:var(--mono);font-size:13.5px}
-.header-row{display:grid;grid-template-columns:1fr 1fr 48px;gap:14px;margin-bottom:14px}
+.header-row{display:grid;grid-template-columns:1fr 1fr 46px;gap:12px;margin-bottom:12px}
 .header-row .icon-btn{border:1px solid var(--border);border-radius:12px}
-.hint{margin:14px 0 0;color:var(--muted);font-size:13.5px}
-.hint b{color:var(--text);font-weight:700}
+.hint{margin:14px 0 0;color:var(--muted);font-size:13px}
+.hint b{color:var(--text)}
 
-.tag{font-family:var(--mono);font-weight:800;font-size:13.5px;letter-spacing:0.4px;text-align:center;cursor:default;border:1px solid;user-select:all}
-.tag-blue{color:var(--info);background:var(--info-soft);border-color:rgba(88,166,255,0.3)}
-.tag-violet{color:#bc8cff;background:rgba(188,140,255,0.15);border-color:rgba(188,140,255,0.3)}
-.tag-amber{color:var(--warn);background:var(--warn-soft);border-color:rgba(210,153,34,0.3)}
-.tag-green{color:var(--ok);background:var(--ok-soft);border-color:rgba(63,185,80,0.3)}
+.tag{font-family:var(--mono);font-weight:800;font-size:13px;text-align:center;cursor:default;border:1px solid;user-select:all}
+.tag-blue{color:var(--info);background:var(--info-soft);border-color:rgba(56,189,248,0.3)}
+.tag-violet{color:#a78bfa;background:var(--violet-soft);border-color:rgba(139,92,246,0.3)}
+.tag-amber{color:var(--warn);background:var(--warn-soft);border-color:rgba(245,158,11,0.3)}
+.tag-green{color:var(--ok);background:var(--ok-soft);border-color:rgba(16,185,129,0.3)}
 
-.auth-row{display:grid;grid-template-columns:190px 140px minmax(0,1fr);gap:16px;align-items:end;margin-bottom:18px}
-.auth-row.two{grid-template-columns:190px minmax(0,1fr)}
-.auth-row.opt{grid-template-columns:150px 190px minmax(0,1fr)}
+.auth-row{display:grid;grid-template-columns:180px 130px minmax(0,1fr);gap:14px;align-items:end;margin-bottom:16px}
+.auth-row.two{grid-template-columns:180px minmax(0,1fr)}
+.auth-row.opt{grid-template-columns:145px 180px minmax(0,1fr)}
 .auth-row .field{margin-bottom:0}
-.note-cell{padding:12px 0;color:var(--muted);font-size:13.5px}
-.note-cell code{font-family:var(--mono);color:var(--text);background:var(--bg);padding:3px 8px;border-radius:6px;border:1px solid var(--border)}
-.opt-title{margin:28px 0 14px;font-size:11.5px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted)}
+.note-cell{padding:11px 0;color:var(--muted);font-size:13px}
+.opt-title{margin:24px 0 12px;font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted)}
 .panel-actions{margin:6px 0 8px}
 
-.toolbar{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:24px}
-.toolbar .seg{margin:0}
+.toolbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:22px}
 .spacer{flex:1}
 
-.log{background:var(--surface);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);margin-bottom:18px;overflow:hidden;transition:all 0.3s cubic-bezier(0.4, 0, 0.2, 1);animation: logSlide 0.4s ease}
-@keyframes logSlide{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
-.log:hover{border-color:var(--border-strong);box-shadow:var(--shadow-lg)}
-.log-head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:20px 26px}
-.log-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-width:0}
-.log-id{font-family:var(--mono);font-size:13.5px;font-weight:700}
-.log-meta{color:var(--muted);font-size:13px}
-.log-actions{display:flex;align-items:center;gap:16px}
-.log-url{padding:0 26px 16px;font-family:var(--mono);font-size:13px;color:var(--muted);word-break:break-all}
+.log{background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);margin-bottom:16px;overflow:hidden}
+.log-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:18px 24px}
+.log-title{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.log-id{font-family:var(--mono);font-size:13px;font-weight:700}
+.log-meta{color:var(--muted);font-size:12.5px}
+.log-actions{display:flex;align-items:center;gap:14px}
+.log-url{padding:0 24px 14px;font-family:var(--mono);font-size:12.5px;color:var(--muted);word-break:break-all}
 .log details{border-top:1px solid var(--border)}
-.log summary{padding:16px 26px;cursor:pointer;color:var(--muted);font-size:13.5px;font-weight:600;user-select:none;transition:color 0.2s}
+.log summary{padding:14px 24px;cursor:pointer;color:var(--muted);font-size:13px;font-weight:600;user-select:none}
 .log summary:hover{color:var(--text)}
-.block{padding:0 26px 22px}
-.block-label{margin-bottom:9px;font-size:11.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
-pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);border-radius:14px;font:13.5px/1.65 var(--mono);overflow:auto;max-height:420px;white-space:pre-wrap;word-break:break-word;box-shadow:inset 0 2px 6px rgba(0,0,0,0.6)}
-.trunc{margin-top:10px;font-size:13px;color:var(--warn)}
-.badge{display:inline-flex;align-items:center;padding:4px 12px;border-radius:999px;font-size:12px;font-weight:800;letter-spacing:0.4px}
-.b-info{background:var(--info-soft);color:var(--info);border:1px solid rgba(88,166,255,0.3)}
-.b-ok{background:var(--ok-soft);color:var(--ok);border:1px solid rgba(63,185,80,0.3)}
-.b-warn{background:var(--warn-soft);color:var(--warn);border:1px solid rgba(210,153,34,0.3)}
-.b-err{background:var(--danger-soft);color:var(--danger);border:1px solid rgba(248,81,73,0.3)}
+.block{padding:0 24px 20px}
+.block-label{margin-bottom:8px;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+pre{margin:0;padding:18px;background:var(--bg);border:1px solid var(--border);border-radius:12px;font:13px/1.6 var(--mono);overflow:auto;max-height:400px;white-space:pre-wrap;word-break:break-word}
+.badge{display:inline-flex;align-items:center;padding:3px 11px;border-radius:999px;font-size:11.5px;font-weight:800}
+.b-info{background:var(--info-soft);color:var(--info);border:1px solid rgba(56,189,248,0.3)}
+.b-ok{background:var(--ok-soft);color:var(--ok);border:1px solid rgba(16,185,129,0.3)}
+.b-warn{background:var(--warn-soft);color:var(--warn);border:1px solid rgba(245,158,11,0.3)}
+.b-err{background:var(--danger-soft);color:var(--danger);border:1px solid rgba(239,68,68,0.3)}
 .b-neutral{background:var(--bg);color:var(--muted);border:1px solid var(--border)}
-.empty{display:grid;place-items:center;gap:12px;text-align:center;padding:80px 24px;border:1px dashed var(--border);border-radius:18px;color:var(--muted);background:var(--surface)}
-.empty .icon{width:36px;height:36px;color:var(--accent)}
+.empty{display:grid;place-items:center;gap:10px;text-align:center;padding:70px 24px;border:1px dashed var(--border);border-radius:18px;color:var(--muted);background:var(--surface)}
+.empty .icon{width:34px;height:34px;color:var(--accent)}
 .empty strong{color:var(--text);font-size:16px}
 
-.toasts{position:fixed;right:28px;bottom:28px;display:flex;flex-direction:column;gap:12px;z-index:60}
-.toast{min-width:280px;max-width:420px;padding:16px 20px;border-radius:14px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-left:5px solid var(--info);box-shadow:var(--shadow-lg);font-size:14px;animation: toastIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards}
-@keyframes toastIn{from{opacity:0;transform:translateX(30px) scale(0.95)}to{opacity:1;transform:none}}
+.toasts{position:fixed;right:24px;bottom:24px;display:flex;flex-direction:column;gap:10px;z-index:120}
+.toast{min-width:270px;max-width:400px;padding:14px 18px;border-radius:12px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-left:4px solid var(--info);box-shadow:var(--shadow-lg);font-size:13.5px}
 .toast.success{border-left-color:var(--ok)}
 .toast.error{border-left-color:var(--danger)}
 
-.modal{position:fixed;inset:0;background:rgba(1,4,9,0.85);display:grid;place-items:center;padding:24px;z-index:80;backdrop-filter:blur(12px);animation: modalFade 0.3s ease}
-@keyframes modalFade{from{opacity:0}to{opacity:1}}
-.dialog{width:100%;max-width:460px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:32px;box-shadow:var(--shadow-lg);animation: dialogPopup 0.4s cubic-bezier(0.16, 1, 0.3, 1)}
-@keyframes dialogPopup{from{opacity:0;transform:scale(0.9) translateY(20px)}to{opacity:1;transform:none}}
-.dialog h3{margin:0 0 12px;font-size:20px;font-weight:800}
-.dialog p{margin:0 0 28px;color:var(--muted);font-size:14px}
-.dialog .actions{display:flex;justify-content:flex-end;gap:14px}
+.modal{position:fixed;inset:0;background:rgba(2,4,10,0.85);display:grid;place-items:center;padding:24px;z-index:130;backdrop-filter:blur(10px)}
+.dialog{width:100%;max-width:440px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:28px;box-shadow:var(--shadow-lg)}
+.dialog h3{margin:0 0 10px;font-size:19px;font-weight:800}
+.dialog p{margin:0 0 24px;color:var(--muted);font-size:14px}
+.dialog .actions{display:flex;justify-content:flex-end;gap:12px}
 
-@media (max-width:900px){
+@media (max-width:960px){
+  .home-view{padding:20px}
+  .portal-grid{grid-template-columns:1fr}
   .app{grid-template-columns:1fr}
-  .sidebar{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;gap:14px;padding:18px}
+  .sidebar{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;gap:12px;padding:16px}
   .brand{padding:0}.nav-label,.side-foot{display:none}
   .nav{flex-direction:row;flex-wrap:wrap}
-  .main{padding:28px 18px 64px}
-  .grid-2,.url-bar,.metrics-bar{grid-template-columns:1fr}
+  .main{padding:24px 18px 60px}
+  .grid-2,.url-bar,.metrics-bar,.auth-row,.auth-row.two,.auth-row.opt{grid-template-columns:1fr}
   .topbar{flex-direction:column}
 }
 </style>
@@ -501,27 +617,105 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
   <symbol id="i-eye" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></symbol>
   <symbol id="i-trash" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></symbol>
   <symbol id="i-refresh" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></symbol>
-  <symbol id="i-hex" viewBox="0 0 24 24"><path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M8 12h8"/><path d="M13 9l3 3-3 3"/></symbol>
+  <symbol id="i-web" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/><line x1="19.07" y1="4.93" x2="4.93" y2="19.07"/></symbol>
   <symbol id="i-send" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
   <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></symbol>
 </svg>
 
-<div class="app">
-  <aside class="sidebar">
-    <div class="brand">
-      <div class="brand-mark"><svg class="icon"><use href="#i-hex"/></svg></div>
-      <div><strong>NexRelay</strong><span>Matrix Hub</span></div>
+<!-- Interactive SpiderWeb Canvas & Warp Flash -->
+<canvas id="webCanvas"></canvas>
+<div id="warpFlash"></div>
+
+<!-- ==================== HOMEPAGE VIEW ==================== -->
+<section id="homeView" class="home-view">
+  <header class="home-nav">
+    <div class="home-brand">
+      <div class="home-logo"><svg class="icon"><use href="#i-web"/></svg></div>
+      <div>
+        <strong>NexRelay</strong>
+        <span>SpiderWeb Nexus</span>
+      </div>
     </div>
-    <div class="nav-label">Navigation</div>
+    <div class="status" id="homeStatusPill"><span class="dot"></span><span id="homeStatusText">Synchronizing web…</span></div>
+  </header>
+
+  <div class="home-hero">
+    <div class="nexus-pill"><span class="pulse"></span>Bidirectional ServiceNow Integration Mesh</div>
+    <h1 class="hero-title">NexRelay · SpiderWeb Nexus</h1>
+    <p class="hero-sub">Move your cursor across the neural silk web, then select any node below to dive directly into your ServiceNow integration workspace.</p>
+
+    <div class="portal-grid">
+      <article class="portal-card" data-portal="inbound" tabindex="0" role="button">
+        <div>
+          <div class="portal-top">
+            <div class="portal-icon"><svg class="icon"><use href="#i-in"/></svg></div>
+            <span class="portal-tag">ALL METHODS</span>
+          </div>
+          <h3>Inbound Webhook Hub</h3>
+          <p>Capture ServiceNow GET, POST, PUT, PATCH, and DELETE payloads on a pristine, secret-free URL with multi-auth verification.</p>
+        </div>
+        <div class="portal-cta">Dive into Inbound Hub <svg class="icon"><use href="#i-arrow"/></svg></div>
+      </article>
+
+      <article class="portal-card" data-portal="outbound" tabindex="0" role="button">
+        <div>
+          <div class="portal-top">
+            <div class="portal-icon"><svg class="icon"><use href="#i-out"/></svg></div>
+            <span class="portal-tag">REST CLIENT</span>
+          </div>
+          <h3>Outbound PDI Client</h3>
+          <p>Dispatch authenticated Table API calls directly to your ServiceNow instance using Basic, OAuth 2.0 Bearer, or custom headers.</p>
+        </div>
+        <div class="portal-cta">Dive into Outbound Client <svg class="icon"><use href="#i-arrow"/></svg></div>
+      </article>
+
+      <article class="portal-card" data-portal="logs" tabindex="0" role="button">
+        <div>
+          <div class="portal-top">
+            <div class="portal-icon"><svg class="icon"><use href="#i-list"/></svg></div>
+            <span class="portal-tag" id="homeLogBadge">0 EVENTS</span>
+          </div>
+          <h3>Live Execution Logs</h3>
+          <p>Inspect real-time request headers, query parameters, JSON payloads, response codes, and latency telemetry across the mesh.</p>
+        </div>
+        <div class="portal-cta">Dive into Audit Stream <svg class="icon"><use href="#i-arrow"/></svg></div>
+      </article>
+    </div>
+  </div>
+
+  <footer class="home-footer">
+    <div>Click any portal node to trigger a 3D warp dive into the web.</div>
+    <div class="home-stats">
+      <span>TRAFFIC: <b id="homeStatTotal">0</b></span>
+      <span>UPTIME: <b id="homeStatUptime">0s</b></span>
+    </div>
+  </footer>
+</section>
+
+<!-- ==================== WORKSPACE VIEW ==================== -->
+<div id="workspaceView" class="app" hidden>
+  <aside class="sidebar">
+    <div class="brand" id="brandHomeBtn" title="Return to SpiderWeb Homepage">
+      <div class="brand-mark"><svg class="icon"><use href="#i-web"/></svg></div>
+      <div><strong>NexRelay</strong><span>SpiderWeb Nexus</span></div>
+    </div>
+
+    <button type="button" class="home-return-btn" id="returnHomeBtn">
+      <svg class="icon"><use href="#i-home"/></svg>SpiderWeb Home
+    </button>
+
+    <div class="nav-label">Workspace Nodes</div>
     <nav class="nav" aria-label="Primary">
-      <button type="button" class="nav-item active" data-panel="inbound" data-route="/hub/inbound"><svg class="icon"><use href="#i-in"/></svg>Inbound Webhook</button>
-      <button type="button" class="nav-item" data-panel="outbound" data-route="/hub/outbound"><svg class="icon"><use href="#i-out"/></svg>Outbound Client</button>
-      <button type="button" class="nav-item" data-panel="logs" data-route="/hub/logs"><svg class="icon"><use href="#i-list"/></svg>Execution Logs<span class="count" id="logCount">0</span></button>
+      <button type="button" class="nav-item active" data-panel="inbound"><svg class="icon"><use href="#i-in"/></svg>Inbound Webhook</button>
+      <button type="button" class="nav-item" data-panel="outbound"><svg class="icon"><use href="#i-out"/></svg>Outbound Client</button>
+      <button type="button" class="nav-item" data-panel="logs"><svg class="icon"><use href="#i-list"/></svg>Execution Logs<span class="count" id="logCount">0</span></button>
     </nav>
     <div class="side-foot">
-      <div class="lbl">Matrix Mode</div>
-      <div>Unified secret-free webhook listener active.</div>
+      <div class="lbl">Mesh Status</div>
+      <div>Universal listener active (All HTTP Methods).</div>
     </div>
   </aside>
 
@@ -531,7 +725,6 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
       <div class="status" id="statusPill"><span class="dot"></span><span id="statusText">Checking gateway…</span></div>
     </header>
 
-    <!-- Telemetry Bar -->
     <div class="metrics-bar">
       <div class="metric-card">
         <div class="label">Total Requests</div>
@@ -554,7 +747,7 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
     <!-- Inbound Panel -->
     <section id="panel-inbound" class="panel active">
       <div class="card">
-        <div class="card-head"><div><h2>Inbound Webhook Endpoint URL</h2><p>Pristine, secret-free URL route. Zero tokens or keys exposed in query parameters.</p></div></div>
+        <div class="card-head"><div><h2>Inbound Webhook Endpoint URL</h2><p>Pristine, secret-free URL route supporting GET, POST, PUT, PATCH, and DELETE methods.</p></div></div>
         <div class="card-body">
           <div class="field">
             <label for="inboundUrlBox">Endpoint URL</label>
@@ -579,7 +772,6 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
             <button type="button" data-tab-group="cred" data-tab-target="cred-oauth">OAuth 2.0</button>
           </div>
 
-          <!-- Bearer -->
           <div class="tab-panel" data-panel-group="cred" id="cred-bearer">
             <div class="auth-row">
               <div class="field">
@@ -605,7 +797,6 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
             <p class="hint">In ServiceNow REST Message, add an HTTP header named <b>Authorization</b> with value <b>Bearer &lt;token&gt;</b>.</p>
           </div>
 
-          <!-- Basic -->
           <div class="tab-panel" data-panel-group="cred" id="cred-basic" hidden>
             <div class="grid-2">
               <div class="field">
@@ -627,7 +818,6 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
             <p class="hint">In ServiceNow, set REST Message Authentication type to <b>Basic</b>.</p>
           </div>
 
-          <!-- API Key -->
           <div class="tab-panel" data-panel-group="cred" id="cred-key" hidden>
             <div class="field">
               <label for="apiKeyBox">API Key</label>
@@ -652,7 +842,6 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
             <p class="hint">In ServiceNow, add <b>x-sn-apikey</b> as an HTTP header on your REST message.</p>
           </div>
 
-          <!-- OAuth 2.0 -->
           <div class="tab-panel" data-panel-group="cred" id="cred-oauth" hidden>
             <div class="auth-row two">
               <div class="field">
@@ -775,7 +964,7 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
           <div class="tab-panel" data-panel-group="pm" id="pm-body" hidden>
             <label for="httpBody">Raw JSON Body</label>
             <textarea id="httpBody" rows="8" spellcheck="false">{
-  "short_description": "Automated incident created via Matrix Command Center",
+  "short_description": "Automated incident created via SpiderWeb Nexus",
   "urgency": "2",
   "impact": "2",
   "category": "software"
@@ -790,8 +979,8 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
       <div class="toolbar">
         <div class="seg" role="tablist" aria-label="Filter logs" style="margin:0">
           <button type="button" class="active" data-filter="all">All Traffic</button>
-          <button type="button" data-filter="inbound">Inbound</button>
-          <button type="button" data-filter="outbound">Outbound</button>
+          <button type="button" class="filter-btn" data-filter="inbound">Inbound</button>
+          <button type="button" class="filter-btn" data-filter="outbound">Outbound</button>
         </div>
         <div class="spacer"></div>
         <button type="button" class="btn btn-danger-ghost btn-sm" id="clearAllBtn"><svg class="icon"><use href="#i-trash"/></svg>Delete All Records</button>
@@ -825,7 +1014,19 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
     outbound: ['Outbound HTTP Client', 'Send authenticated requests to your ServiceNow instance.'],
     logs: ['Execution Logs & Audit', 'Real-time audit trail of inbound and outbound traffic.']
   };
-  var state = { creds: null, credTab: 'cred-bearer', seen: {}, primed: false, inbound: [], outbound: [], filter: 'all', sending: false, sig: '', open: {} };
+  var state = {
+    view: 'home',
+    panel: 'inbound',
+    creds: null,
+    credTab: 'cred-bearer',
+    inbound: [],
+    outbound: [],
+    filter: 'all',
+    sending: false,
+    sig: '',
+    open: {},
+    warping: false
+  };
 
   function $(id) { return document.getElementById(id); }
   function esc(v) {
@@ -838,6 +1039,288 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
     return isNaN(d) ? esc(iso) : esc(d.toLocaleString());
   }
 
+  /* ==================== 3D SPIDERWEB & WARP ILLUSION ENGINE ==================== */
+  var canvas = $('webCanvas');
+  var ctx = canvas.getContext('2d');
+  var W = 0, H = 0;
+  var mouse = { x: -9999, y: -9999, active: false };
+  var warp = { active: false, speed: 1, targetX: 0, targetY: 0, progress: 0 };
+  var nodes = [];
+  var NODE_COUNT = 85;
+
+  function resizeCanvas() {
+    W = canvas.width = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
+  function initWebNodes() {
+    nodes = [];
+    for (var i = 0; i < NODE_COUNT; i++) {
+      nodes.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        z: 0.2 + Math.random() * 0.8,
+        vx: (Math.random() - 0.5) * 0.55,
+        vy: (Math.random() - 0.5) * 0.55,
+        r: 1.5 + Math.random() * 2.2
+      });
+    }
+  }
+  initWebNodes();
+
+  window.addEventListener('mousemove', function (e) {
+    mouse.x = e.clientX;
+    mouse.y = e.clientY;
+    mouse.active = true;
+  });
+  window.addEventListener('mouseleave', function () {
+    mouse.active = false;
+  });
+
+  function renderWebLoop() {
+    ctx.clearRect(0, 0, W, H);
+
+    var cx = warp.active ? warp.targetX : W * 0.5;
+    var cy = warp.active ? warp.targetY : H * 0.45;
+
+    // Subtle geometric spiderweb rings anchored at center
+    var ringCount = 5;
+    var maxRadius = Math.max(W, H) * 0.62;
+    var scaleBoost = warp.active ? (1 + warp.progress * 3.5) : 1;
+
+    ctx.save();
+    ctx.strokeStyle = warp.active ? 'rgba(16, 185, 129, 0.22)' : 'rgba(56, 189, 248, 0.065)';
+    ctx.lineWidth = 1;
+
+    // Radial spokes
+    var spokes = 16;
+    for (var s = 0; s < spokes; s++) {
+      var ang = (s / spokes) * Math.PI * 2 + (warp.progress * 0.25);
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(ang) * maxRadius * scaleBoost, cy + Math.sin(ang) * maxRadius * scaleBoost);
+      ctx.stroke();
+    }
+
+    // Concentric web silk polygons
+    for (var r = 1; r <= ringCount; r++) {
+      var rad = (r / ringCount) * maxRadius * scaleBoost;
+      ctx.beginPath();
+      for (var s2 = 0; s2 <= spokes; s2++) {
+        var a2 = (s2 / spokes) * Math.PI * 2 + (warp.progress * 0.25);
+        var wobble = Math.sin(a2 * 3 + r) * 8;
+        var px = cx + Math.cos(a2) * (rad + wobble);
+        var py = cy + Math.sin(a2) * (rad + wobble);
+        if (s2 === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Update & draw floating web nodes
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i];
+
+      if (warp.active) {
+        // Accelerate nodes outward from focal dive point for 3D tunnel illusion
+        var dx = n.x - warp.targetX;
+        var dy = n.y - warp.targetY;
+        var dist = Math.hypot(dx, dy) || 1;
+        var pull = (12 + warp.progress * 42) * n.z;
+        var prevX = n.x;
+        var prevY = n.y;
+        n.x += (dx / dist) * pull;
+        n.y += (dy / dist) * pull;
+
+        // Draw streak line
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(110, 231, 183, ' + (0.35 + warp.progress * 0.5) + ')';
+        ctx.lineWidth = 1.8 * n.z;
+        ctx.moveTo(prevX, prevY);
+        ctx.lineTo(n.x, n.y);
+        ctx.stroke();
+
+        // Respawn near center if flown offscreen during dive
+        if (n.x < -50 || n.x > W + 50 || n.y < -50 || n.y > H + 50) {
+          var spawnAng = Math.random() * Math.PI * 2;
+          var spawnDist = 20 + Math.random() * 90;
+          n.x = warp.targetX + Math.cos(spawnAng) * spawnDist;
+          n.y = warp.targetY + Math.sin(spawnAng) * spawnDist;
+        }
+      } else {
+        n.x += n.vx * n.z;
+        n.y += n.vy * n.z;
+
+        if (n.x < 0 || n.x > W) n.vx *= -1;
+        if (n.y < 0 || n.y > H) n.vy *= -1;
+
+        // Subtle cursor attraction
+        if (mouse.active) {
+          var mdx = mouse.x - n.x;
+          var mdy = mouse.y - n.y;
+          var mdist = Math.hypot(mdx, mdy);
+          if (mdist < 210 && mdist > 1) {
+            n.x += (mdx / mdist) * 0.45;
+            n.y += (mdy / mdist) * 0.45;
+          }
+        }
+      }
+
+      // Draw node glow
+      ctx.beginPath();
+      ctx.fillStyle = warp.active ? '#6ee7b7' : 'rgba(16, 185, 129, 0.75)';
+      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Connect nearby nodes with silk threads
+      if (!warp.active) {
+        for (var j = i + 1; j < nodes.length; j++) {
+          var n2 = nodes[j];
+          var d = Math.hypot(n.x - n2.x, n.y - n2.y);
+          if (d < 135) {
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(16, 185, 129, ' + ((1 - d / 135) * 0.24) + ')';
+            ctx.lineWidth = 0.9;
+            ctx.moveTo(n.x, n.y);
+            ctx.lineTo(n2.x, n2.y);
+            ctx.stroke();
+          }
+        }
+
+        // Silk strands tethered to cursor
+        if (mouse.active) {
+          var cmDist = Math.hypot(n.x - mouse.x, n.y - mouse.y);
+          if (cmDist < 190) {
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(6, 182, 212, ' + ((1 - cmDist / 190) * 0.55) + ')';
+            ctx.lineWidth = 1.2;
+            ctx.moveTo(n.x, n.y);
+            ctx.lineTo(mouse.x, mouse.y);
+            ctx.stroke();
+          }
+        }
+      }
+    }
+
+    requestAnimationFrame(renderWebLoop);
+  }
+  requestAnimationFrame(renderWebLoop);
+
+  /* ==================== VIEW & PORTAL TRANSITIONS ==================== */
+  function diveIntoWorkspace(targetPanel, clickEvent, pushHistory) {
+    if (state.warping) return;
+    state.warping = true;
+
+    var tx = W * 0.5;
+    var ty = H * 0.5;
+    if (clickEvent && clickEvent.currentTarget) {
+      var rect = clickEvent.currentTarget.getBoundingClientRect();
+      tx = rect.left + rect.width / 2;
+      ty = rect.top + rect.height / 2;
+    } else if (clickEvent && typeof clickEvent.clientX === 'number') {
+      tx = clickEvent.clientX;
+      ty = clickEvent.clientY;
+    }
+
+    warp.active = true;
+    warp.targetX = tx;
+    warp.targetY = ty;
+    warp.progress = 0;
+
+    var flash = $('warpFlash');
+    flash.style.setProperty('--wx', tx + 'px');
+    flash.style.setProperty('--wy', ty + 'px');
+    flash.classList.add('active');
+
+    var homeEl = $('homeView');
+    homeEl.classList.remove('entering');
+    homeEl.classList.add('diving');
+
+    var start = performance.now();
+    var duration = 620;
+
+    function stepWarp(now) {
+      var t = Math.min(1, (now - start) / duration);
+      warp.progress = t * t;
+      if (t < 1) {
+        requestAnimationFrame(stepWarp);
+      } else {
+        warp.active = false;
+        warp.progress = 0;
+        flash.classList.remove('active');
+
+        homeEl.hidden = true;
+        homeEl.classList.remove('diving');
+
+        var wsEl = $('workspaceView');
+        wsEl.hidden = false;
+        wsEl.classList.remove('unwarping');
+        void wsEl.offsetWidth;
+        wsEl.classList.add('unwarping');
+
+        state.view = 'workspace';
+        state.warping = false;
+        selectPanel(targetPanel, pushHistory);
+      }
+    }
+    requestAnimationFrame(stepWarp);
+  }
+
+  function returnToHome(pushHistory) {
+    if (state.warping) return;
+    state.view = 'home';
+
+    var wsEl = $('workspaceView');
+    wsEl.hidden = true;
+    wsEl.classList.remove('unwarping');
+
+    var homeEl = $('homeView');
+    homeEl.hidden = false;
+    homeEl.classList.remove('diving');
+    homeEl.classList.remove('entering');
+    void homeEl.offsetWidth;
+    homeEl.classList.add('entering');
+
+    if (pushHistory) {
+      history.pushState({ view: 'home' }, '', '/');
+    }
+  }
+
+  function selectPanel(name, pushHistory) {
+    state.panel = name;
+    Array.prototype.forEach.call(document.querySelectorAll('.panel'), function (p) {
+      p.classList.toggle('active', p.id === 'panel-' + name);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.nav-item'), function (b) {
+      b.classList.toggle('active', b.getAttribute('data-panel') === name);
+    });
+    if (PAGES[name]) {
+      $('pageTitle').textContent = PAGES[name][0];
+      $('pageSub').textContent = PAGES[name][1];
+    }
+    if (pushHistory) {
+      history.pushState({ view: 'workspace', panel: name }, '', '/hub/' + name);
+    }
+  }
+
+  window.addEventListener('popstate', function () {
+    var path = location.pathname;
+    if (path === '/' || path === '') {
+      returnToHome(false);
+    } else {
+      $('homeView').hidden = true;
+      $('workspaceView').hidden = false;
+      state.view = 'workspace';
+      if (path.includes('/outbound')) selectPanel('outbound', false);
+      else if (path.includes('/logs')) selectPanel('logs', false);
+      else selectPanel('inbound', false);
+    }
+  });
+
+  /* ==================== UI HELPERS & API LOGIC ==================== */
   function toast(msg, kind) {
     var el = document.createElement('div');
     el.className = 'toast ' + (kind || 'info');
@@ -898,29 +1381,6 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
     setTimeout(function () { swapIcon(btn, btn.getAttribute('data-orig')); }, 1400);
   }
 
-  function showPanel(name, pushHistory) {
-    Array.prototype.forEach.call(document.querySelectorAll('.panel'), function (p) {
-      p.classList.toggle('active', p.id === 'panel-' + name);
-    });
-    Array.prototype.forEach.call(document.querySelectorAll('.nav-item'), function (b) {
-      b.classList.toggle('active', b.getAttribute('data-panel') === name);
-    });
-    if (PAGES[name]) {
-      $('pageTitle').textContent = PAGES[name][0];
-      $('pageSub').textContent = PAGES[name][1];
-    }
-    if (pushHistory) {
-      history.pushState({ panel: name }, '', '/hub/' + name);
-    }
-  }
-
-  window.addEventListener('popstate', function() {
-    var path = location.pathname;
-    if (path.includes('/outbound')) showPanel('outbound', false);
-    else if (path.includes('/logs')) showPanel('logs', false);
-    else showPanel('inbound', false);
-  });
-
   function switchTab(btn) {
     var group = btn.getAttribute('data-tab-group');
     var target = btn.getAttribute('data-tab-target');
@@ -957,7 +1417,7 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
     if (!c) { box.textContent = 'Loading credentials…'; return; }
     var url = $('inboundUrlBox').value;
     var tail = "  -H 'Content-Type: application/json' \\\n" +
-      "  -d '{\"short_description\":\"Test payload from NexRelay Matrix\"}'";
+      "  -d '{\"short_description\":\"Test payload from SpiderWeb Nexus\"}'";
     var head = "curl -X POST '" + url + "' \\\n";
     var out;
     if (state.credTab === 'cred-basic') {
@@ -1004,6 +1464,8 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
   function updateMetrics() {
     var all = state.outbound.concat(state.inbound);
     $('metricTotal').textContent = all.length;
+    $('homeStatTotal').textContent = all.length;
+    $('homeLogBadge').textContent = all.length + ' EVENTS';
 
     var successes = state.outbound.filter(function(o) { return o.statusCode >= 200 && o.statusCode < 300; }).length;
     var outboundTotal = state.outbound.length;
@@ -1024,10 +1486,6 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
         var s = signature(d.inbound, d.outbound);
         if (s === state.sig) return;
         state.sig = s; state.inbound = d.inbound; state.outbound = d.outbound;
-        if (!state.primed) {
-          state.primed = true;
-          d.inbound.concat(d.outbound).forEach(function (i) { state.seen[i.id] = true; });
-        }
         renderLogs();
         updateMetrics();
       }).catch(function () {});
@@ -1037,6 +1495,7 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
 
   function block(label, data) {
     if (data === null || data === undefined || data === '') return '';
+    if (typeof data === 'object' && Object.keys(data).length === 0) return '';
     var text = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
     var cut = false;
     if (text.length > MAX_RENDER_CHARS) { text = text.slice(0, MAX_RENDER_CHARS); cut = true; }
@@ -1050,8 +1509,8 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
       '<svg class="icon"><use href="#i-trash"/></svg>Delete</button>';
     var head, body;
     if (inbound) {
-      head = badge('Inbound', 'b-info') + badge(item.authMethod || 'Authenticated', 'b-ok') + '<span class="log-id">' + esc(item.id) + '</span>';
-      body = block('Payload', item.payload);
+      head = badge(item.method || 'IN', 'b-neutral') + badge('Inbound', 'b-info') + badge(item.authMethod || 'Authenticated', 'b-ok') + '<span class="log-id">' + esc(item.id) + '</span>';
+      body = block('Query Parameters', item.query) + block('Payload', item.payload);
     } else {
       var code = item.statusCode || 0;
       var cls = code >= 200 && code < 300 ? 'b-ok' : (code >= 300 && code < 400 ? 'b-warn' : 'b-err');
@@ -1063,8 +1522,8 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
     return '<article class="log" data-card="' + esc(item.id) + '">' +
       '<div class="log-head"><div class="log-title">' + head + '</div>' +
       '<div class="log-actions"><span class="log-meta">' + formatTime(item.timestamp) + '</span>' + delBtn + '</div></div>' +
-      (inbound ? '' : '<div class="log-url">' + esc(item.url) + '</div>') +
-      (body ? '<details data-id="' + esc(item.id) + '"' + open + '><summary>' + (inbound ? 'Payload' : 'Request &amp; Response') + '</summary>' + body + '</details>' : '') +
+      (inbound ? '<div class="log-url">' + esc(item.method || 'ANY') + ' /api/servicenow/inbound</div>' : '<div class="log-url">' + esc(item.url) + '</div>') +
+      (body ? '<details data-id="' + esc(item.id) + '"' + open + '><summary>' + (inbound ? 'Query &amp; Payload' : 'Request &amp; Response') + '</summary>' + body + '</details>' : '') +
       '</article>';
   }
 
@@ -1084,7 +1543,6 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
       return;
     }
     $('logsList').innerHTML = list.map(logCard).join('');
-    all.forEach(function (i) { state.seen[i.id] = true; });
   }
 
   function resetSignature() {
@@ -1162,7 +1620,7 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
       methodInput.value = 'POST';
       urlInput.value = 'https://dev_instance.service-now.com/api/now/table/incident';
       bodyInput.value = JSON.stringify({
-        short_description: "Automated incident created via Matrix Command Center",
+        short_description: "Automated incident created via SpiderWeb Nexus",
         urgency: "2",
         impact: "2",
         category: "hardware"
@@ -1226,7 +1684,7 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
         resetSignature(); renderLogs(); updateMetrics();
         var rec = r.data.record;
         toast(rec.method + ' completed: ' + rec.status, rec.statusCode >= 200 && rec.statusCode < 300 ? 'success' : 'error');
-        showPanel('logs', true);
+        selectPanel('logs', true);
       } else {
         toast((r.data && r.data.message) || 'Request failed', 'error');
       }
@@ -1238,21 +1696,35 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
     });
   }
 
-  function setStatus(ok) {
-    var pill = $('statusPill');
-    pill.classList.toggle('ok', ok);
-    pill.classList.toggle('bad', !ok);
+  function setStatus(ok, uptime) {
+    var pills = [$('statusPill'), $('homeStatusPill')];
+    pills.forEach(function (pill) {
+      if (!pill) return;
+      pill.classList.toggle('ok', ok);
+      pill.classList.toggle('bad', !ok);
+    });
     $('statusText').textContent = ok ? 'Gateway online' : 'Gateway offline';
+    $('homeStatusText').textContent = ok ? 'Nexus mesh online' : 'Mesh offline';
+    if (typeof uptime === 'number') {
+      $('homeStatUptime').textContent = uptime + 's';
+    }
   }
   function checkHealth() {
     fetch('/health', { cache: 'no-store' })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
-      .then(function () { setStatus(true); }, function () { setStatus(false); });
+      .then(function (d) { setStatus(true, d && d.uptimeSeconds); }, function () { setStatus(false); });
   }
 
+  /* ==================== EVENT LISTENERS ==================== */
   document.addEventListener('click', function (e) {
     var t = e.target;
     var el;
+
+    // Portal cards on Homepage -> Dive into SpiderWeb illusion
+    if ((el = t.closest('[data-portal]'))) {
+      diveIntoWorkspace(el.getAttribute('data-portal'), { currentTarget: el }, true);
+      return;
+    }
 
     if ((el = t.closest('[data-template]'))) {
       loadTemplate(el.getAttribute('data-template'));
@@ -1277,7 +1749,7 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
       return;
     }
     if ((el = t.closest('[data-tab-group]'))) { switchTab(el); return; }
-    if ((el = t.closest('[data-panel]'))) { showPanel(el.getAttribute('data-panel'), true); return; }
+    if ((el = t.closest('[data-panel]'))) { selectPanel(el.getAttribute('data-panel'), true); return; }
     if ((el = t.closest('[data-filter]'))) {
       state.filter = el.getAttribute('data-filter');
       Array.prototype.forEach.call(document.querySelectorAll('[data-filter]'), function (b) { b.classList.toggle('active', b === el); });
@@ -1288,20 +1760,25 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
     if ((el = t.closest('[data-remove-row]'))) { el.parentElement.remove(); return; }
   });
 
-  document.addEventListener('toggle', function (e) {
-    var d = e.target;
-    if (d && d.matches && d.matches('details[data-id]')) state.open[d.getAttribute('data-id')] = d.open;
-  }, true);
-
-  document.addEventListener('keydown', function(e) {
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && document.activeElement && document.activeElement.hasAttribute('data-portal')) {
+      diveIntoWorkspace(document.activeElement.getAttribute('data-portal'), { currentTarget: document.activeElement }, true);
+    }
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-      var outboundPanel = $('panel-outbound');
-      if (outboundPanel.classList.contains('active')) {
+      if (state.view === 'workspace' && $('panel-outbound').classList.contains('active')) {
         e.preventDefault();
         sendOutbound();
       }
     }
   });
+
+  document.addEventListener('toggle', function (e) {
+    var d = e.target;
+    if (d && d.matches && d.matches('details[data-id]')) state.open[d.getAttribute('data-id')] = d.open;
+  }, true);
+
+  $('returnHomeBtn').addEventListener('click', function () { returnToHome(true); });
+  $('brandHomeBtn').addEventListener('click', function () { returnToHome(true); });
 
   $('modalConfirm').addEventListener('click', function () { closeModal(true); });
   $('modalCancel').addEventListener('click', function () { closeModal(false); });
@@ -1317,10 +1794,20 @@ pre{margin:0;padding:20px;background:var(--bg);border:1px solid var(--border);bo
   updateAuthFields();
   updateBodyState();
 
+  // Route Initialization
   var initPath = location.pathname;
-  if (initPath.includes('/outbound')) showPanel('outbound', false);
-  else if (initPath.includes('/logs')) showPanel('logs', false);
-  else { showPanel('inbound', false); history.replaceState({ panel: 'inbound' }, '', '/hub/inbound'); }
+  if (initPath.startsWith('/hub')) {
+    $('homeView').hidden = true;
+    $('workspaceView').hidden = false;
+    state.view = 'workspace';
+    if (initPath.includes('/outbound')) selectPanel('outbound', false);
+    else if (initPath.includes('/logs')) selectPanel('logs', false);
+    else selectPanel('inbound', false);
+  } else {
+    $('homeView').hidden = false;
+    $('workspaceView').hidden = true;
+    state.view = 'home';
+  }
 
   renderCredentials();
   renderLogs();
@@ -1349,5 +1836,5 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`NexRelay Matrix Edition running on port ${PORT}`);
+    console.log(`NexRelay SpiderWeb Nexus running on port ${PORT}`);
 });
