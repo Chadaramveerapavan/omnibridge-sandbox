@@ -1,2123 +1,896 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>OmniBridge Sandbox — Precision API & Webhook Studio</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniBridge — Enterprise API & Webhook Sandbox</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #F5F5F7;
+            --bg-secondary: #FFFFFF;
+            --bg-tertiary: #E8E8ED;
+            --text-primary: #1D1D1F;
+            --text-secondary: #86868B;
+            --accent: #0071E3;
+            --accent-hover: #0077ED;
+            --border: #D2D2D7;
+            --card-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
+            --card-shadow-hover: 0 12px 36px rgba(0, 0, 0, 0.08);
+            --transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
 
-  <script>
-    tailwind.config = {
-      darkMode: 'media',
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['-apple-system', 'BlinkMacSystemFont', 'SF Pro Display', 'SF Pro Text', 'Inter', 'sans-serif'],
-            mono: ['SF Mono', 'JetBrains Mono', 'Menlo', 'monospace'],
-          },
-          colors: {
-            apple: {
-              bg: '#F5F5F7',
-              card: '#FFFFFF',
-              ink: '#1D1D1F',
-              slate: '#86868B',
-              border: '#D2D2D7',
-              blue: '#0071E3',
-              blueHover: '#0077ED',
-              darkBg: '#000000',
-              darkCard: '#161617',
-              darkElevated: '#242426',
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-primary: #000000;
+                --bg-secondary: #161617;
+                --bg-tertiary: #2c2c2e;
+                --text-primary: #F5F5F7;
+                --text-secondary: #86868B;
+                --accent: #2997FF;
+                --accent-hover: #0077ED;
+                --border: #38383A;
+                --card-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+                --card-shadow-hover: 0 12px 36px rgba(0, 0, 0, 0.5);
             }
-          },
-          boxShadow: {
-            'apple-sm': '0 2px 12px rgba(0, 0, 0, 0.04)',
-            'apple-md': '0 12px 36px rgba(0, 0, 0, 0.07)',
-            'apple-lg': '0 24px 64px rgba(0, 0, 0, 0.10)',
-          }
         }
-      }
-    };
-  </script>
 
-  <style>
-    :root {
-      --ease-apple: cubic-bezier(0.16, 1, 0.3, 1);
-    }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
 
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-      overflow-x: hidden;
-    }
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.5;
+            overflow-x: hidden;
+        }
 
-    /* Frosted Glass Navigation */
-    .glass-nav {
-      background: rgba(245, 245, 247, 0.78);
-      backdrop-filter: saturate(180%) blur(20px);
-      -webkit-backdrop-filter: saturate(180%) blur(20px);
-    }
-    @media (prefers-color-scheme: dark) {
-      .glass-nav {
-        background: rgba(22, 22, 23, 0.78);
-      }
-    }
+        /* Navigation Bar */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 52px;
+            background-color: rgba(255, 255, 255, 0.85);
+            backdrop-filter: saturate(180%) blur(20px);
+            -webkit-backdrop-filter: saturate(180%) blur(20px);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
 
-    /* Smooth Exclusive View Switch Transition */
-    .view-section {
-      display: none;
-      opacity: 0;
-      transform: translateY(14px);
-    }
-    .view-section.active-view {
-      display: block;
-      animation: viewEnter 0.45s var(--ease-apple) forwards;
-    }
+        @media (prefers-color-scheme: dark) {
+            nav {
+                background-color: rgba(22, 22, 23, 0.85);
+            }
+        }
 
-    @keyframes viewEnter {
-      from {
-        opacity: 0;
-        transform: translateY(14px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
+        .nav-content {
+            width: 100%;
+            max-width: 1100px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+        }
 
-    /* Bento Card Hover Elevation */
-    .bento-card {
-      transition: transform 0.38s var(--ease-apple), box-shadow 0.38s var(--ease-apple), border-color 0.3s ease;
-    }
-    .bento-card:hover {
-      transform: translateY(-3px);
-      box-shadow: 0 18px 42px rgba(0, 0, 0, 0.07);
-    }
+        .nav-logo {
+            font-weight: 600;
+            font-size: 14px;
+            letter-spacing: -0.01em;
+            color: var(--text-primary);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+        }
 
-    /* Navigation Pill Active State */
-    .nav-pill {
-      transition: all 0.28s var(--ease-apple);
-    }
-    .nav-pill.active {
-      background-color: #FFFFFF;
-      color: #1D1D1F;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 0 1px rgba(0, 0, 0, 0.12);
-    }
-    @media (prefers-color-scheme: dark) {
-      .nav-pill.active {
-        background-color: #2C2C2E;
-        color: #F5F5F7;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
-      }
-    }
+        .nav-logo svg {
+            width: 16px;
+            height: 16px;
+            fill: var(--accent);
+        }
 
-    /* Sub-tab Active State */
-    .subtab-btn {
-      transition: all 0.25s var(--ease-apple);
-    }
-    .subtab-btn.active {
-      background-color: #0071E3;
-      color: #FFFFFF;
-    }
+        .nav-links {
+            display: flex;
+            gap: 16px;
+        }
 
-    /* Custom Scrollbar */
-    .code-scroll::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
-    }
-    .code-scroll::-webkit-scrollbar-track {
-      background: transparent;
-    }
-    .code-scroll::-webkit-scrollbar-thumb {
-      background: rgba(134, 134, 139, 0.3);
-      border-radius: 9999px;
-    }
-    .code-scroll::-webkit-scrollbar-thumb:hover {
-      background: rgba(134, 134, 139, 0.5);
-    }
+        .nav-links a {
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: var(--transition);
+            cursor: pointer;
+            padding: 6px 10px;
+            border-radius: 6px;
+        }
 
-    /* JSON Syntax Highlighting */
-    .json-key { color: #0071E3; font-weight: 500; }
-    .json-string { color: #16A34A; }
-    .json-number { color: #D97706; }
-    .json-boolean { color: #9333EA; }
-    .json-null { color: #86868B; }
+        .nav-links a:hover, .nav-links a.active {
+            color: var(--text-primary);
+            background-color: var(--bg-tertiary);
+        }
 
-    @media (prefers-color-scheme: dark) {
-      .json-key { color: #60A5FA; }
-      .json-string { color: #4ADE80; }
-      .json-number { color: #FBBF24; }
-      .json-boolean { color: #C084FC; }
-    }
-    .dark-pane .json-key { color: #60A5FA; }
-    .dark-pane .json-string { color: #4ADE80; }
-    .dark-pane .json-number { color: #FBBF24; }
-    .dark-pane .json-boolean { color: #C084FC; }
+        .top-telemetry {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
 
-    /* Blinking Green Connection Indicator Animation */
-    @keyframes blinkGreenDot {
-      0%, 100% {
-        opacity: 1;
-        transform: scale(1);
-        box-shadow: 0 0 0 0 rgba(52, 199, 89, 0.75);
-      }
-      50% {
-        opacity: 0.25;
-        transform: scale(0.88);
-        box-shadow: 0 0 0 6px rgba(52, 199, 89, 0);
-      }
-    }
-    .blink-green-active {
-      background-color: #34C759;
-      animation: blinkGreenDot 0.85s ease-in-out infinite;
-    }
-  </style>
+        .connection-indicator {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-weight: 500;
+        }
+
+        .connection-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background-color: #34C759;
+        }
+
+        .connection-dot.blinking {
+            animation: pulse-blink 1.2s infinite ease-in-out;
+        }
+
+        @keyframes pulse-blink {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.3; transform: scale(1.3); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        /* Hero Section */
+        header.hero {
+            padding: 120px 20px 50px;
+            text-align: center;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        header.hero h1 {
+            font-size: clamp(32px, 6vw, 56px);
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            line-height: 1.1;
+            margin-bottom: 16px;
+            background: linear-gradient(180deg, var(--text-primary) 0%, var(--text-secondary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        header.hero p {
+            font-size: clamp(16px, 2.2vw, 20px);
+            color: var(--text-secondary);
+            font-weight: 400;
+            max-width: 600px;
+            margin: 0 auto 30px;
+            letter-spacing: -0.003em;
+        }
+
+        .cta-group {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px 20px;
+            border-radius: 980px;
+            font-size: 14px;
+            font-weight: 500;
+            text-decoration: none;
+            transition: var(--transition);
+            cursor: pointer;
+            border: none;
+        }
+
+        .btn-primary {
+            background-color: var(--accent);
+            color: #FFFFFF;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--accent-hover);
+            transform: scale(1.02);
+        }
+
+        .btn-secondary {
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .btn-secondary:hover {
+            background-color: var(--border);
+        }
+
+        /* Main Workspace & Tabs */
+        .main-container {
+            max-width: 1100px;
+            margin: 0 auto 80px;
+            padding: 0 20px;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        /* Bento Grid Architecture */
+        .bento-grid {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 20px;
+        }
+
+        .bento-card {
+            background-color: var(--bg-secondary);
+            border-radius: 24px;
+            padding: 28px;
+            box-shadow: var(--card-shadow);
+            border: 1px solid var(--border);
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .bento-card:hover {
+            box-shadow: var(--card-shadow-hover);
+            transform: translateY(-2px);
+        }
+
+        .col-span-12 { grid-column: span 12; }
+        .col-span-8 { grid-column: span 8; }
+        .col-span-4 { grid-column: span 4; }
+        .col-span-6 { grid-column: span 6; }
+
+        @media (max-width: 768px) {
+            .col-span-8, .col-span-4, .col-span-6 {
+                grid-column: span 12;
+            }
+            header.hero {
+                padding: 100px 16px 30px;
+            }
+            .top-telemetry {
+                display: none;
+            }
+            .bento-card {
+                padding: 20px;
+            }
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 20px;
+            gap: 12px;
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+        }
+
+        .card-subtitle {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        /* Form Controls */
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+
+        select, input, textarea {
+            width: 100%;
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-size: 13px;
+            outline: none;
+            transition: var(--transition);
+        }
+
+        select:focus, input:focus, textarea:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.15);
+        }
+
+        .row {
+            display: flex;
+            gap: 12px;
+        }
+
+        .row > * {
+            flex: 1;
+        }
+
+        .code-editor {
+            height: 130px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            resize: vertical;
+        }
+
+        .response-box {
+            background-color: var(--bg-tertiary);
+            border-radius: 12px;
+            padding: 14px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--text-primary);
+            max-height: 240px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            white-space: pre-wrap;
+        }
+
+        /* Profile Kinetic Typography Animation Styles */
+        .profile-stage {
+            min-height: 380px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            padding: 40px 20px;
+        }
+
+        .animated-name-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 6px;
+            max-width: 800px;
+            margin-bottom: 24px;
+        }
+
+        .name-word {
+            display: flex;
+            gap: 3px;
+        }
+
+        .anim-char {
+            display: inline-block;
+            font-size: clamp(28px, 4.5vw, 48px);
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: var(--text-primary);
+            transition: transform 1.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 1.2s ease;
+            transform: translate(var(--rand-x), var(--rand-y)) rotate(var(--rand-rot)) scale(0.6);
+            opacity: 0;
+        }
+
+        .anim-char.assembled {
+            transform: translate(0, 0) rotate(0deg) scale(1);
+            opacity: 1;
+        }
+
+        .profile-tagline {
+            font-size: clamp(16px, 2vw, 22px);
+            font-weight: 500;
+            color: var(--accent);
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1) 1.2s;
+        }
+
+        .profile-tagline.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        footer {
+            text-align: center;
+            padding: 30px 20px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            border-top: 1px solid var(--border);
+        }
+    </style>
 </head>
-<body class="bg-apple-bg dark:bg-apple-darkBg text-apple-ink dark:text-[#F5F5F7] min-h-screen flex flex-col selection:bg-apple-blue selection:text-white">
+<body>
 
-  <!-- Toast Notification Container (Replaces alert) -->
-  <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
-
-  <!-- Sticky Frosted Glass Top Navigation Bar -->
-  <header class="glass-nav sticky top-0 z-40 border-b border-black/[0.08] dark:border-white/[0.1]">
-    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-      <!-- Brand Identity -->
-      <button onclick="navigateTo('home')" class="flex items-center gap-2.5 text-left group focus:outline-none">
-        <div class="w-8 h-8 rounded-xl bg-apple-ink dark:bg-white text-white dark:text-apple-ink flex items-center justify-center shadow-sm group-hover:bg-apple-blue dark:group-hover:bg-apple-blue dark:group-hover:text-white transition-colors duration-300">
-          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2L2 7l10 5 10-5-10-5z" />
-            <path d="M2 17l10 5 10-5" />
-            <path d="M2 12l10 5 10-5" />
-          </svg>
-        </div>
-        <div>
-          <span class="font-semibold text-[16px] tracking-tight block leading-none">OmniBridge</span>
-          <span class="text-[10px] font-mono text-apple-slate uppercase tracking-widest">Sandbox Studio</span>
-        </div>
-      </button>
-
-      <!-- 4 Exclusive Navigation Tabs -->
-      <nav aria-label="Primary Workspace Tabs" class="flex items-center p-1 rounded-full bg-black/[0.05] dark:bg-white/[0.08] border border-black/[0.04] dark:border-white/[0.06] overflow-x-auto max-w-full">
-        <button onclick="navigateTo('home')" id="nav-tab-home" class="nav-pill active px-3.5 sm:px-5 py-1.5 rounded-full text-xs sm:text-[13px] font-medium text-apple-slate hover:text-apple-ink dark:hover:text-white whitespace-nowrap">
-          Home
-        </button>
-        <button onclick="navigateTo('inbound')" id="nav-tab-inbound" class="nav-pill px-3.5 sm:px-5 py-1.5 rounded-full text-xs sm:text-[13px] font-medium text-apple-slate hover:text-apple-ink dark:hover:text-white flex items-center gap-1.5 whitespace-nowrap">
-          <span>Inbound</span>
-          <span id="nav-badge-inbound" class="px-1.5 py-0.2 rounded-full bg-apple-blue text-white text-[10px] font-semibold">0</span>
-        </button>
-        <button onclick="navigateTo('outbound')" id="nav-tab-outbound" class="nav-pill px-3.5 sm:px-5 py-1.5 rounded-full text-xs sm:text-[13px] font-medium text-apple-slate hover:text-apple-ink dark:hover:text-white whitespace-nowrap">
-          Outbound
-        </button>
-        <button onclick="navigateTo('database')" id="nav-tab-database" class="nav-pill px-3.5 sm:px-5 py-1.5 rounded-full text-xs sm:text-[13px] font-medium text-apple-slate hover:text-apple-ink dark:hover:text-white flex items-center gap-1.5 whitespace-nowrap">
-          <span>Database</span>
-          <span id="nav-badge-db" class="px-1.5 py-0.2 rounded-full bg-black/10 dark:bg-white/15 text-apple-ink dark:text-white text-[10px] font-semibold">0</span>
-        </button>
-      </nav>
-
-      <!-- Live Ticking Clock + Connection Status Indicator -->
-      <div class="hidden md:flex items-center gap-2.5">
-        <!-- Real-Time Ticking Clock -->
-        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white dark:bg-apple-darkCard border border-black/[0.06] dark:border-white/[0.08] shadow-apple-sm font-mono text-[11px] text-apple-slate">
-          <svg class="w-3.5 h-3.5 text-apple-blue shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <circle cx="12" cy="12" r="10" />
-            <polyline points="12 6 12 12 16 14" />
-          </svg>
-          <span id="nav-live-clock" class="text-apple-ink dark:text-white font-medium">--:--:--</span>
-        </div>
-
-        <!-- Connection Status Indicator (Blinking Green when active, Solid Green Check when ready) -->
-        <div id="nav-conn-pill" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white dark:bg-apple-darkCard border border-black/[0.06] dark:border-white/[0.08] shadow-apple-sm transition-all">
-          <span id="nav-conn-indicator" class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[#34C759]/15 text-[#34C759] font-bold text-[10px]">✓</span>
-          <span id="nav-conn-label" class="text-[11px] font-medium text-apple-ink dark:text-white">Connected</span>
-        </div>
-      </div>
-    </div>
-  </header>
-
-  <!-- Main Workspace Area (Only ONE view is visible at a time) -->
-  <main class="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-12">
-
-    <!-- ===================================================================== -->
-    <!-- VIEW 1: HOME TAB                                                      -->
-    <!-- ===================================================================== -->
-    <section id="view-home" class="view-section active-view space-y-10">
-      <!-- Hero Banner -->
-      <div class="text-center max-w-3xl mx-auto pt-4 sm:pt-8 pb-2">
-        <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white dark:bg-apple-darkCard border border-black/[0.06] dark:border-white/[0.08] shadow-apple-sm mb-6">
-          <span class="w-2 h-2 rounded-full bg-apple-blue"></span>
-          <span class="text-xs font-medium text-apple-slate">ServiceNow REST &amp; Webhook Studio</span>
-        </div>
-
-        <h1 class="text-3xl sm:text-5xl md:text-[56px] font-bold tracking-[-0.03em] leading-[1.08]">
-          OmniBridge Sandbox<br />
-          <span class="text-apple-slate font-semibold">ServiceNow Integration Engine.</span>
-        </h1>
-
-        <p class="mt-5 text-base sm:text-xl text-apple-slate max-w-2xl mx-auto leading-relaxed">
-          Configure authentic ServiceNow Inbound and Outbound integrations with native Basic, OAuth 1.0, and OAuth 2.0 authentication and clean <code class="font-mono text-sm text-apple-blue">db.json</code> logging.
-        </p>
-
-        <!-- Quick-Launch Primary Buttons -->
-        <div class="mt-8 flex flex-wrap items-center justify-center gap-3.5">
-          <button onclick="navigateTo('inbound')" class="px-6 py-3 rounded-full bg-apple-blue hover:bg-apple-blueHover text-white font-medium text-sm transition-all shadow-sm hover:scale-[1.02] active:scale-[0.98] flex items-center gap-2">
-            <span>Configure Inbound</span>
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-            </svg>
-          </button>
-          <button onclick="navigateTo('outbound')" class="px-6 py-3 rounded-full bg-white dark:bg-apple-darkCard hover:bg-black/[0.03] dark:hover:bg-white/[0.06] text-apple-ink dark:text-white border border-black/[0.08] dark:border-white/[0.1] font-medium text-sm transition-all flex items-center gap-2">
-            <span>Configure Outbound</span>
-            <svg class="w-4 h-4 text-apple-blue" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      <!-- Live Zero-Initialized Telemetry Counters -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
-        <div class="bento-card bg-white dark:bg-apple-darkCard rounded-3xl p-6 border border-black/[0.06] dark:border-white/[0.08] shadow-apple-sm">
-          <div class="flex items-center justify-between text-apple-slate text-xs font-medium">
-            <span>Outbound Requests</span>
-            <span class="w-2 h-2 rounded-full bg-apple-blue"></span>
-          </div>
-          <div id="metric-outbound-count" class="mt-3 text-3xl sm:text-4xl font-bold tracking-tight">0</div>
-          <div class="mt-1 text-xs text-apple-slate">Dispatched REST Calls</div>
-        </div>
-
-        <div class="bento-card bg-white dark:bg-apple-darkCard rounded-3xl p-6 border border-black/[0.06] dark:border-white/[0.08] shadow-apple-sm">
-          <div class="flex items-center justify-between text-apple-slate text-xs font-medium">
-            <span>Inbound Events</span>
-            <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-          </div>
-          <div id="metric-inbound-count" class="mt-3 text-3xl sm:text-4xl font-bold tracking-tight">0</div>
-          <div class="mt-1 text-xs text-apple-slate">Received Payloads</div>
-        </div>
-
-        <div class="bento-card bg-white dark:bg-apple-darkCard rounded-3xl p-6 border border-black/[0.06] dark:border-white/[0.08] shadow-apple-sm">
-          <div class="flex items-center justify-between text-apple-slate text-xs font-medium">
-            <span>Stored Records</span>
-            <span class="w-2 h-2 rounded-full bg-purple-500"></span>
-          </div>
-          <div id="metric-stored-count" class="mt-3 text-3xl sm:text-4xl font-bold tracking-tight">0</div>
-          <div class="mt-1 text-xs text-apple-slate">Persisted in db.json</div>
-        </div>
-
-        <div class="bento-card bg-white dark:bg-apple-darkCard rounded-3xl p-6 border border-black/[0.06] dark:border-white/[0.08] shadow-apple-sm">
-          <div class="flex items-center justify-between text-apple-slate text-xs font-medium">
-            <span>Last Latency</span>
-            <span class="w-2 h-2 rounded-full bg-amber-500"></span>
-          </div>
-          <div id="metric-last-latency" class="mt-3 text-3xl sm:text-4xl font-bold tracking-tight">—</div>
-          <div class="mt-1 text-xs text-apple-slate">Round-Trip Time</div>
-        </div>
-      </div>
-
-      <!-- Quick-Jump Interactive Cards + Clean Activity Stream -->
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <!-- Left: Dedicated Module Launchers -->
-        <div class="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-5">
-          <!-- Inbound Launcher Card -->
-          <div onclick="navigateTo('inbound')" class="bento-card cursor-pointer bg-white dark:bg-apple-darkCard rounded-[28px] p-7 border border-black/[0.06] dark:border-white/[0.08] shadow-apple-sm flex flex-col justify-between group">
-            <div>
-              <div class="w-11 h-11 rounded-2xl bg-blue-50 dark:bg-blue-500/15 text-apple-blue flex items-center justify-center mb-5">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-              </div>
-              <h3 class="text-xl font-semibold tracking-tight group-hover:text-apple-blue transition-colors">Inbound Endpoint</h3>
-              <p class="mt-2 text-xs sm:text-sm text-apple-slate leading-relaxed">
-                Define inbound authorization rules (Basic, OAuth 1.0, OAuth 2.0 Bearer) and validate incoming ServiceNow Business Rule payloads.
-              </p>
+    <!-- Navigation Bar -->
+    <nav>
+        <div class="nav-content">
+            <a class="nav-logo" onclick="switchTab('home')">
+                <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                OmniBridge
+            </a>
+            <div class="nav-links">
+                <a onclick="switchTab('home')" id="nav-home" class="active">Home</a>
+                <a onclick="switchTab('profile')" id="nav-profile">Profile</a>
+                <a onclick="switchTab('inbound')" id="nav-inbound">Inbound</a>
+                <a onclick="switchTab('outbound')" id="nav-outbound">Outbound</a>
+                <a onclick="switchTab('database')" id="nav-database">Database</a>
             </div>
-            <div class="mt-6 flex items-center gap-1.5 text-xs font-semibold text-apple-blue">
-              <span>Open Inbound Workspace</span>
-              <span class="group-hover:translate-x-1 transition-transform">→</span>
+            <div class="top-telemetry">
+                <div class="connection-indicator" id="connIndicator">
+                    <span class="connection-dot" id="connDot"></span>
+                    <span id="connText">Connected</span>
+                </div>
+                <div id="liveClock" style="font-family: 'JetBrains Mono', monospace;">--:--:--</div>
             </div>
-          </div>
+        </div>
+    </nav>
 
-          <!-- Outbound Launcher Card -->
-          <div onclick="navigateTo('outbound')" class="bento-card cursor-pointer bg-white dark:bg-apple-darkCard rounded-[28px] p-7 border border-black/[0.06] dark:border-white/[0.08] shadow-apple-sm flex flex-col justify-between group">
-            <div>
-              <div class="w-11 h-11 rounded-2xl bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-5">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <h3 class="text-xl font-semibold tracking-tight group-hover:text-apple-blue transition-colors">Outbound REST Client</h3>
-              <p class="mt-2 text-xs sm:text-sm text-apple-slate leading-relaxed">
-                Send real HTTP requests to your ServiceNow Table or Scripted REST APIs with Basic, OAuth 1.0, or OAuth 2.0 token generation.
-              </p>
-            </div>
-            <div class="mt-6 flex items-center gap-1.5 text-xs font-semibold text-apple-blue">
-              <span>Open Outbound Workspace</span>
-              <span class="group-hover:translate-x-1 transition-transform">→</span>
-            </div>
-          </div>
+    <!-- Main Workspace Container -->
+    <main class="main-container">
 
-          <!-- Database Launcher Card -->
-          <div onclick="navigateTo('database')" class="bento-card cursor-pointer sm:col-span-2 bg-white dark:bg-apple-darkCard rounded-[28px] p-7 border border-black/[0.06] dark:border-white/[0.08] shadow-apple-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 group">
-            <div class="flex items-start sm:items-center gap-4">
-              <div class="w-11 h-11 rounded-2xl bg-purple-50 dark:bg-purple-500/15 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
-                  <ellipse cx="12" cy="5" rx="9" ry="3" />
-                  <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
-                  <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
-                </svg>
-              </div>
-              <div>
-                <h3 class="text-lg font-semibold tracking-tight group-hover:text-apple-blue transition-colors">Live <code class="font-mono text-sm">db.json</code> State</h3>
-                <p class="text-xs sm:text-sm text-apple-slate mt-0.5">Clean datastore recording actual outbound logs and inbound payloads.</p>
-              </div>
+        <!-- ================= HOME TAB ================= -->
+        <div id="tab-home" class="tab-content active">
+            <header class="hero">
+                <h1>ServiceNow API & Webhook Sandbox</h1>
+                <p>Designed for flawless enterprise integration testing with complete support for all ServiceNow authentication protocols.</p>
+                <div class="cta-group">
+                    <button class="btn btn-primary" onclick="switchTab('outbound')">Open Outbound Tester</button>
+                    <button class="btn btn-secondary" onclick="switchTab('inbound')">Open Inbound Webhooks</button>
+                </div>
+            </header>
+            <div class="bento-grid" style="margin-top: 20px;">
+                <div class="bento-card col-span-6" onclick="switchTab('profile')" style="cursor: pointer;">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">Creator Profile</div>
+                            <div class="card-subtitle">View animated developer introduction and credentials.</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="bento-card col-span-6" onclick="switchTab('outbound')" style="cursor: pointer;">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">Outbound Workspace</div>
+                            <div class="card-subtitle">Test REST table API calls with Basic Auth, OAuth 2.0, mTLS, and HMAC.</div>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <span class="text-xs font-semibold text-apple-blue shrink-0">Inspect DB →</span>
-          </div>
         </div>
 
-        <!-- Right: Clean Activity Stream -->
-        <div class="lg:col-span-5 bg-white dark:bg-apple-darkCard rounded-[28px] p-7 border border-black/[0.06] dark:border-white/[0.08] shadow-apple-sm flex flex-col justify-between">
-          <div>
-            <div class="flex items-center justify-between mb-5">
-              <div>
-                <h3 class="text-lg font-semibold tracking-tight">Session Activity</h3>
-                <p class="text-xs text-apple-slate">Real events executed in this session</p>
-              </div>
-              <span class="px-2.5 py-1 rounded-full bg-apple-bg dark:bg-apple-darkElevated text-[11px] font-mono text-apple-slate">Live</span>
+        <!-- ================= PROFILE TAB (ANIMATED NAME) ================= -->
+        <div id="tab-profile" class="tab-content">
+            <header class="hero" style="padding-top: 60px; padding-bottom: 20px;">
+                <h1>Developer Showcase</h1>
+                <p>Interactive motion identity display</p>
+            </header>
+            <div class="bento-grid">
+                <div class="bento-card col-span-12 profile-stage">
+                    <div id="nameAnimationContainer" class="animated-name-container">
+                        <!-- Dynamically generated animated letters injected via JS -->
+                    </div>
+                    <div id="profileTagline" class="profile-tagline">ServiceNow Developer</div>
+                    <div style="margin-top: 30px;">
+                        <button class="btn btn-secondary" onclick="triggerProfileAnimation()" style="font-size: 12px; padding: 6px 16px;">Replay Animation</button>
+                    </div>
+                </div>
             </div>
-
-            <div id="home-activity-feed" class="space-y-3 max-h-[290px] overflow-y-auto code-scroll pr-1">
-              <!-- Populated only when user triggers Inbound or Outbound events -->
-            </div>
-          </div>
-
-          <div class="mt-5 pt-4 border-t border-black/[0.06] dark:border-white/[0.08] flex items-center justify-between text-xs text-apple-slate">
-            <span>Zero mock clutter</span>
-            <button onclick="navigateTo('database')" class="text-apple-blue font-medium hover:underline">View db.json</button>
-          </div>
         </div>
-      </div>
-    </section>
 
-    <!-- ===================================================================== -->
-    <!-- VIEW 2: INBOUND TAB (Unified Endpoint + Auth Policy + Live Inspector) -->
-    <!-- ===================================================================== -->
-    <section id="view-inbound" class="view-section space-y-6">
-      <!-- View Header -->
-      <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-        <div>
-          <span class="text-xs font-semibold uppercase tracking-wider text-apple-blue">Inbound Webhook Receiver</span>
-          <h2 class="text-2xl sm:text-4xl font-bold tracking-tight mt-1">Inbound Integration</h2>
-          <p class="text-sm text-apple-slate mt-1">Configure your single inbound listener URL, enforce ServiceNow authorization policies, and inspect received payloads.</p>
+        <!-- ================= INBOUND TAB ================= -->
+        <div id="tab-inbound" class="tab-content">
+            <header class="hero" style="padding-top: 80px; padding-bottom: 30px;">
+                <h1>Inbound Webhook Listener</h1>
+                <p>Configure endpoint security policies and intercept incoming payloads in real-time.</p>
+            </header>
+            <div class="bento-grid">
+                <div class="bento-card col-span-6">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">Webhook Endpoint Configuration</div>
+                            <div class="card-subtitle">Target destination and authentication rule</div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Live Webhook URL</label>
+                        <input type="text" readonly value="https://sandbox.omnibridge.local/api/v1/inbound">
+                    </div>
+                    <div class="form-group">
+                        <label>Inbound Authorization Policy</label>
+                        <select id="inboundAuthType" onchange="toggleInboundAuthFields()">
+                            <option value="none">No Auth</option>
+                            <option value="basic">Basic Auth</option>
+                            <option value="oauth2">OAuth 2.0 Bearer Token</option>
+                            <option value="oauth1">OAuth 1.0 Signature</option>
+                        </select>
+                    </div>
+                    <div id="inboundAuthDetails" class="form-group" style="display:none;">
+                        <label>Expected Secret / Client Token</label>
+                        <input type="password" id="inboundSecret" placeholder="Enter expected token or credential">
+                    </div>
+                    <button class="btn btn-primary" onclick="simulateIncomingWebhook()">Simulate Incoming Payload</button>
+                </div>
+                <div class="bento-card col-span-6">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">Intercepted Inbound Requests</div>
+                            <div class="card-subtitle">Real-time event stream</div>
+                        </div>
+                        <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" onclick="clearInboundLogs()">Clear</button>
+                    </div>
+                    <div id="inboundLogs" class="response-box" style="height: 280px;">// Waiting for incoming webhooks...</div>
+                </div>
+            </div>
         </div>
-        <div class="flex items-center gap-2">
-          <button onclick="clearInboundEvents()" class="px-4 py-2 rounded-full bg-white dark:bg-apple-darkCard hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 border border-black/[0.08] dark:border-white/[0.1] text-xs font-medium transition-colors">
-            Clear Events
-          </button>
-        </div>
-      </div>
 
-      <!-- 1. Single Unified Inbound Listener Endpoint -->
-      <div class="bg-white dark:bg-apple-darkCard rounded-[28px] p-6 border border-black/[0.06] dark:border-white/[0.08] shadow-apple-sm">
-        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div class="flex-1">
-            <div class="flex items-center gap-2 mb-2">
-              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span class="text-xs font-semibold">Unified Inbound Listener Endpoint</span>
-            </div>
-            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-              <select id="inbound-method-select" class="px-3.5 py-2.5 rounded-xl bg-apple-bg dark:bg-apple-darkElevated border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs font-semibold text-apple-blue outline-none">
-                <option value="POST" selected>POST</option>
-                <option value="PUT">PUT</option>
-                <option value="PATCH">PATCH</option>
-              </select>
-              <input id="inbound-url-input" type="text" value="" placeholder="/api/inbound" class="flex-1 px-4 py-2.5 rounded-xl bg-apple-bg dark:bg-apple-darkElevated border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs sm:text-sm outline-none focus:border-apple-blue" />
-            </div>
-          </div>
+        <!-- ================= OUTBOUND TAB ================= -->
+        <div id="tab-outbound" class="tab-content">
+            <header class="hero" style="padding-top: 80px; padding-bottom: 30px;">
+                <h1>Outbound API Tester</h1>
+                <p>Execute ServiceNow Table API requests with complete authorization suites.</p>
+            </header>
+            <div class="bento-grid">
+                <div class="bento-card col-span-12">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">Request Builder</div>
+                            <div class="card-subtitle">Configure method, endpoint, and authorization</div>
+                        </div>
+                    </div>
+                    <div class="form-group row">
+                        <select id="outMethod" style="max-width: 120px; font-weight: 600; color: var(--accent);">
+                            <option value="GET">GET</option>
+                            <option value="POST" selected>POST</option>
+                            <option value="PUT">PUT</option>
+                            <option value="PATCH">PATCH</option>
+                            <option value="DELETE">DELETE</option>
+                        </select>
+                        <input type="text" id="outUrl" value="https://dev12345.service-now.com/api/now/table/incident">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>ServiceNow Authorization Type</label>
+                        <select id="outAuthType" onchange="renderOutboundAuthFields()">
+                            <option value="none">No Auth</option>
+                            <option value="basic">Basic Auth (Username / Password)</option>
+                            <option value="oauth2">OAuth 2.0 (Client Credentials / Password / JWT / SAML)</option>
+                            <option value="apikey">API Key (x-sn-apikey)</option>
+                            <option value="hmac">HMAC Token (SHA-256 Signature)</option>
+                            <option value="mtls">Mutual Authentication (mTLS / X.509)</option>
+                            <option value="session">Session Token (JSESSIONID + X-UserToken)</option>
+                            <option value="oidc">3rd-Party OIDC ID Token</option>
+                        </select>
+                    </div>
 
-          <div class="flex flex-wrap items-center gap-2.5 lg:self-end">
-            <button onclick="copyInboundUrl()" class="px-5 py-2.5 rounded-full bg-apple-blue hover:bg-apple-blueHover text-white text-xs font-medium transition-all shadow-sm">
-              Copy Endpoint URL
-            </button>
-          </div>
-        </div>
-      </div>
+                    <div id="outAuthContainer" style="background: var(--bg-tertiary); padding: 16px; border-radius: 12px; margin-bottom: 16px; border: 1px solid var(--border);">
+                        <!-- Dynamically populated auth inputs -->
+                    </div>
 
-      <!-- 2. Inbound Authorization Policy & Incoming Verification Tester -->
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <!-- Left: Inbound Auth Policy + Payload Verification Tester -->
-        <div class="lg:col-span-5 bg-white dark:bg-apple-darkCard rounded-[28px] p-6 border border-black/[0.06] dark:border-white/[0.08] shadow-apple-sm space-y-5">
-          <div>
-            <div class="flex items-center justify-between">
-              <h3 class="text-base font-semibold">Inbound Authorization Policy</h3>
-              <span id="inbound-auth-badge" class="px-2.5 py-0.5 rounded-full bg-apple-bg dark:bg-apple-darkElevated text-[11px] font-mono text-apple-slate">No Auth</span>
-            </div>
-            <p class="text-xs text-apple-slate mt-0.5">Define credentials required from ServiceNow Outbound REST Messages.</p>
-          </div>
-
-          <!-- Inbound Auth Type Selector -->
-          <div>
-            <label class="block text-[11px] font-medium text-apple-slate mb-1.5">ServiceNow Inbound Authorization Type</label>
-            <select id="inbound-auth-type" onchange="renderInboundAuthFields()" class="w-full px-3.5 py-2.5 rounded-xl bg-apple-bg dark:bg-apple-darkElevated border border-black/[0.08] dark:border-white/[0.1] text-xs font-medium outline-none focus:border-apple-blue">
-              <option value="none">No Auth</option>
-              <option value="basic">Basic Auth</option>
-              <option value="oauth2">OAuth 2.0 (Bearer Token)</option>
-              <option value="apikey">API Key (x-sn-apikey)</option>
-              <option value="hmac">HMAC Token (SHA-256)</option>
-              <option value="mtls">Mutual Authentication (mTLS / X.509)</option>
-              <option value="session">Session Token (JSESSIONID + X-UserToken)</option>
-              <option value="oidc">3rd-Party OIDC ID Token</option>
-            </select>
-          </div>
-
-          <!-- Dynamic Expected Credentials Fields -->
-          <div id="inbound-auth-fields" class="space-y-3">
-            <!-- Populated based on selected Inbound Auth Type -->
-          </div>
-
-          <!-- Incoming Payload & Auth Verification Tester -->
-          <div class="pt-4 border-t border-black/[0.06] dark:border-white/[0.08] space-y-3">
-            <div class="flex items-center justify-between">
-              <span class="text-xs font-semibold">Test Incoming Request</span>
-              <span class="text-[11px] font-mono text-apple-slate">Validates Auth Policy</span>
-            </div>
-
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Incoming Auth Credential / Header Value</label>
-              <div class="flex gap-2">
-                <input id="inbound-test-auth-header" type="text" placeholder="e.g., Basic YWRtaW46cGFzcw== or Bearer <token>" class="flex-1 px-3 py-2 rounded-xl bg-apple-bg dark:bg-apple-darkElevated border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-                <button onclick="autoFillMatchingInboundAuth()" type="button" class="px-3 py-2 rounded-xl bg-apple-bg dark:bg-apple-darkElevated hover:border-apple-blue border border-black/[0.08] dark:border-white/[0.1] text-[11px] font-medium text-apple-blue whitespace-nowrap" title="Auto-fill valid Authorization credential matching your configured policy">
-                  Auto-Fill Valid
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Additional Headers (JSON)</label>
-              <textarea id="inbound-test-headers" rows="2" placeholder='{"Content-Type": "application/json"}' class="w-full rounded-xl bg-apple-bg dark:bg-apple-darkElevated border border-black/[0.08] dark:border-white/[0.1] p-2.5 font-mono text-xs outline-none focus:border-apple-blue code-scroll resize-none">{
-  "Content-Type": "application/json"
+                    <div class="form-group">
+                        <label>Request Body (JSON)</label>
+                        <textarea id="outPayload" class="code-editor">{
+  "short_description": "Network latency issue reported in manufacturing zone",
+  "priority": "2",
+  "category": "Inquiry"
 }</textarea>
-            </div>
-
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Incoming JSON Body</label>
-              <textarea id="inbound-test-body" rows="4" placeholder='{"number": "INC0010001", "state": "New"}' class="w-full rounded-xl bg-apple-bg dark:bg-apple-darkElevated border border-black/[0.08] dark:border-white/[0.1] p-2.5 font-mono text-xs outline-none focus:border-apple-blue code-scroll resize-none">{}</textarea>
-            </div>
-
-            <button onclick="dispatchTestInboundEvent()" class="w-full py-2.5 rounded-full bg-apple-blue hover:bg-apple-blueHover text-white text-xs font-medium transition-all shadow-sm">
-              Send Test Payload to Inbound Endpoint
-            </button>
-          </div>
-        </div>
-
-        <!-- Right: Live Intercepted Webhooks Inspector -->
-        <div class="lg:col-span-7 bg-white dark:bg-apple-darkCard rounded-[28px] p-6 border border-black/[0.06] dark:border-white/[0.08] shadow-apple-sm flex flex-col justify-between">
-          <div>
-            <!-- Inspector Top Bar & Filter -->
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-4 border-b border-black/[0.06] dark:border-white/[0.08]">
-              <div>
-                <h3 class="text-base font-semibold">Received Inbound Events</h3>
-                <p class="text-xs text-apple-slate">Inspect headers, authorization verification result, and JSON body</p>
-              </div>
-              <input id="inbound-filter-input" oninput="renderInboundInspector()" type="text" placeholder="Filter events..." class="px-3.5 py-1.5 rounded-full bg-apple-bg dark:bg-apple-darkElevated border border-black/[0.08] dark:border-white/[0.1] text-xs outline-none focus:border-apple-blue" />
-            </div>
-
-            <!-- Event Queue List -->
-            <div id="inbound-queue-list" class="space-y-2 max-h-[210px] overflow-y-auto code-scroll pr-1 mb-5">
-              <!-- Populated only when inbound events arrive -->
-            </div>
-
-            <!-- Selected Event Details -->
-            <div id="inbound-detail-pane" class="hidden rounded-2xl bg-apple-bg dark:bg-apple-darkElevated p-4 border border-black/[0.05] dark:border-white/[0.07] space-y-3">
-              <div class="flex items-center justify-between gap-2">
-                <span id="detail-hook-event" class="font-mono text-xs font-semibold text-apple-blue truncate"></span>
-                <span id="detail-hook-badge" class="px-2.5 py-0.5 rounded-full font-mono text-[11px] font-medium shrink-0"></span>
-              </div>
-
-              <!-- Request Headers -->
-              <details open class="group">
-                <summary class="cursor-pointer text-xs font-semibold text-apple-ink dark:text-white flex items-center justify-between py-1 select-none">
-                  <span>Request Headers</span>
-                  <span class="text-[11px] text-apple-slate group-open:rotate-180 transition-transform">▼</span>
-                </summary>
-                <div id="detail-hook-headers" class="mt-1.5 p-3 rounded-xl bg-white dark:bg-apple-darkCard font-mono text-[11px] text-apple-slate space-y-1 border border-black/[0.04] dark:border-white/[0.06] break-all"></div>
-              </details>
-
-              <!-- Formatted JSON Payload -->
-              <div>
-                <div class="flex items-center justify-between mb-1">
-                  <span class="text-xs font-semibold">JSON Payload</span>
-                  <button onclick="copySelectedInboundPayload()" class="text-[11px] text-apple-blue hover:underline font-medium">Copy JSON</button>
-                </div>
-                <pre id="detail-hook-payload" class="p-3.5 rounded-xl bg-white dark:bg-apple-darkCard font-mono text-xs overflow-auto max-h-[190px] code-scroll border border-black/[0.04] dark:border-white/[0.06]"></pre>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ===================================================================== -->
-    <!-- VIEW 3: OUTBOUND TAB (Unified ServiceNow Endpoint + Full Auth Suite)  -->
-    <!-- ===================================================================== -->
-    <section id="view-outbound" class="view-section space-y-6">
-      <!-- View Header -->
-      <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-        <div>
-          <span class="text-xs font-semibold uppercase tracking-wider text-apple-blue">Outbound ServiceNow REST Client</span>
-          <h2 class="text-2xl sm:text-4xl font-bold tracking-tight mt-1">Outbound Integration</h2>
-          <p class="text-sm text-apple-slate mt-1">Execute authenticated REST requests against your ServiceNow instance with Basic, OAuth 1.0, or OAuth 2.0.</p>
-        </div>
-      </div>
-
-      <!-- Unified REST API Request Bar (No Preset Dropdowns) -->
-      <div class="bg-white dark:bg-apple-darkCard rounded-[28px] p-6 border border-black/[0.06] dark:border-white/[0.08] shadow-apple-sm space-y-5">
-        <div class="flex flex-col lg:flex-row gap-3">
-          <!-- Method + Single Clean Endpoint URL Input -->
-          <div class="flex flex-1 rounded-2xl bg-apple-bg dark:bg-apple-darkElevated border border-black/[0.08] dark:border-white/[0.1] overflow-hidden focus-within:border-apple-blue transition-colors">
-            <select id="outbound-method" class="bg-transparent px-4 py-3 font-mono text-sm font-semibold text-apple-blue border-r border-black/[0.08] dark:border-white/[0.1] outline-none cursor-pointer">
-              <option value="GET" selected>GET</option>
-              <option value="POST">POST</option>
-              <option value="PUT">PUT</option>
-              <option value="PATCH">PATCH</option>
-              <option value="DELETE">DELETE</option>
-            </select>
-            <input id="outbound-url" type="text" placeholder="https://devXXXXX.service-now.com/api/now/table/incident" class="flex-1 bg-transparent px-4 py-3 font-mono text-xs sm:text-sm outline-none" />
-          </div>
-
-          <!-- Send Button -->
-          <button onclick="sendOutboundRequest()" class="px-7 py-3 rounded-2xl bg-apple-blue hover:bg-apple-blueHover text-white font-medium text-sm transition-all shadow-sm active:scale-[0.98] flex items-center justify-center gap-2 shrink-0">
-            <span id="outbound-send-label">Send Request</span>
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-            </svg>
-          </button>
-        </div>
-
-        <!-- Request Configurator (Authorization / Body / Headers) + Live Response Viewer -->
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <!-- Left: Tabbed Request Configurator -->
-          <div class="lg:col-span-6 flex flex-col justify-between rounded-2xl bg-apple-bg dark:bg-apple-darkElevated p-5 border border-black/[0.05] dark:border-white/[0.07]">
-            <div>
-              <!-- Sub-Tabs Switcher: Authorization, Body, Headers -->
-              <div class="flex flex-wrap items-center justify-between gap-2 pb-3 mb-4 border-b border-black/[0.06] dark:border-white/[0.08]">
-                <div class="inline-flex p-1 rounded-full bg-black/[0.05] dark:bg-white/[0.08]">
-                  <button onclick="switchOutboundSubtab('auth')" id="subtab-btn-auth" class="subtab-btn active px-3.5 py-1 rounded-full text-xs font-medium">
-                    Authorization
-                  </button>
-                  <button onclick="switchOutboundSubtab('body')" id="subtab-btn-body" class="subtab-btn px-3.5 py-1 rounded-full text-xs font-medium text-apple-slate">
-                    Body (JSON)
-                  </button>
-                  <button onclick="switchOutboundSubtab('headers')" id="subtab-btn-headers" class="subtab-btn px-3.5 py-1 rounded-full text-xs font-medium text-apple-slate">
-                    Headers (<span id="headers-count">2</span>)
-                  </button>
+                    </div>
+                    <button class="btn btn-primary" onclick="executeOutboundRequest()">Send Request</button>
                 </div>
 
-                <button id="format-json-btn" onclick="formatOutboundJson()" class="hidden text-xs font-medium text-apple-blue hover:underline">
-                  Format JSON
-                </button>
-              </div>
-
-              <!-- Subtab 1: ServiceNow Authorization Configurator -->
-              <div id="outbound-subtab-auth" class="space-y-3.5">
-                <div>
-                  <label class="block text-[11px] font-medium text-apple-slate mb-1">ServiceNow Outbound Auth Protocol</label>
-                  <select id="outbound-auth-type" onchange="renderOutboundAuthFields()" class="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] text-xs font-medium outline-none focus:border-apple-blue">
-                    <option value="none">No Auth</option>
-                    <option value="basic">Basic Auth</option>
-                    <option value="oauth2">OAuth 2.0 (All ServiceNow Grants)</option>
-                    <option value="apikey">API Key (x-sn-apikey)</option>
-                    <option value="hmac">HMAC Token (SHA-256)</option>
-                    <option value="mtls">Mutual Authentication (mTLS / X.509)</option>
-                    <option value="session">Session Token (JSESSIONID + X-UserToken)</option>
-                    <option value="oidc">3rd-Party OIDC ID Token</option>
-                  </select>
+                <div class="bento-card col-span-12">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">Response Output</div>
+                            <div class="card-subtitle">Headers, status code, and payload response</div>
+                        </div>
+                    </div>
+                    <div id="outResponse" class="response-box" style="height: 220px;">// Response will appear here after execution...</div>
                 </div>
+            </div>
+        </div>
 
-                <div id="outbound-auth-fields" class="space-y-3 max-h-[260px] overflow-y-auto code-scroll pr-1">
-                  <!-- Dynamically populated based on selected Auth Protocol -->
+        <!-- ================= DATABASE TAB ================= -->
+        <div id="tab-database" class="tab-content">
+            <header class="hero" style="padding-top: 80px; padding-bottom: 30px;">
+                <h1>Mock Datastore (`db.json`)</h1>
+                <p>Live snapshot of recorded inbound events and outbound transaction logs.</p>
+            </header>
+            <div class="bento-grid">
+                <div class="bento-card col-span-12">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">Datastore Inspector</div>
+                            <div class="card-subtitle">JSON database state</div>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;" onclick="refreshDatabaseView()">Refresh State</button>
+                            <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px; color: #FF3B30;" onclick="resetDatabaseState()">Reset DB</button>
+                        </div>
+                    </div>
+                    <div id="dbViewer" class="response-box" style="height: 320px;">Loading database state...</div>
                 </div>
-              </div>
-
-              <!-- Subtab 2: Clean JSON Body Editor -->
-              <div id="outbound-subtab-body" class="hidden">
-                <textarea id="outbound-body-editor" rows="11" placeholder='{\n  "short_description": "Incident summary",\n  "urgency": "2"\n}' class="w-full rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.06] dark:border-white/[0.08] p-3.5 font-mono text-xs leading-relaxed outline-none focus:border-apple-blue code-scroll resize-none"></textarea>
-              </div>
-
-              <!-- Subtab 3: Dynamic Key-Value Headers Editor -->
-              <div id="outbound-subtab-headers" class="hidden space-y-3">
-                <div id="outbound-headers-list" class="space-y-2 max-h-[210px] overflow-y-auto code-scroll pr-1">
-                  <!-- Populated dynamically -->
-                </div>
-                <button onclick="addOutboundHeaderRow('', '')" class="px-3.5 py-1.5 rounded-full bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] text-xs font-medium text-apple-blue hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors">
-                  + Add Header
-                </button>
-              </div>
             </div>
-
-            <div class="pt-3 mt-4 border-t border-black/[0.06] dark:border-white/[0.08] flex items-center justify-between text-[11px] text-apple-slate font-mono">
-              <span id="outbound-auth-summary">Auth: No Auth</span>
-              <span>Live fetch() execution</span>
-            </div>
-          </div>
-
-          <!-- Right: Live Response Viewer -->
-          <div class="lg:col-span-6 rounded-2xl bg-[#161617] text-white p-5 border border-black/10 flex flex-col justify-between min-h-[380px] dark-pane">
-            <div>
-              <!-- Status Bar -->
-              <div class="flex flex-wrap items-center justify-between gap-2 pb-3.5 mb-4 border-b border-white/10">
-                <div class="flex items-center gap-2.5">
-                  <span id="outbound-status-pill" class="px-2.5 py-1 rounded-full text-xs font-mono font-semibold bg-white/10 text-gray-300 border border-white/15">
-                    IDLE
-                  </span>
-                  <span id="outbound-latency-pill" class="text-xs font-mono text-gray-400">—</span>
-                  <span id="outbound-size-pill" class="text-xs font-mono text-gray-500">0 B</span>
-                </div>
-
-                <div class="flex items-center gap-2">
-                  <button onclick="toggleResponseView('body')" id="res-tab-body" class="px-2.5 py-1 rounded-full bg-white/15 text-[11px] font-medium text-white">Body</button>
-                  <button onclick="toggleResponseView('headers')" id="res-tab-headers" class="px-2.5 py-1 rounded-full text-[11px] font-medium text-gray-400 hover:text-white">Headers</button>
-                  <button onclick="copyOutboundResponse()" class="px-3 py-1 rounded-full bg-apple-blue hover:bg-apple-blueHover text-[11px] font-medium text-white transition-colors">
-                    Copy
-                  </button>
-                </div>
-              </div>
-
-              <!-- Formatted JSON Output -->
-              <pre id="outbound-response-output" class="font-mono text-xs leading-relaxed overflow-auto max-h-[270px] code-scroll text-gray-300">// Enter your ServiceNow endpoint URL, configure authorization, and click Send Request.</pre>
-              <!-- Response Headers Output -->
-              <pre id="outbound-response-headers-output" class="hidden font-mono text-xs leading-relaxed overflow-auto max-h-[270px] code-scroll text-gray-300">// No response headers yet.</pre>
-            </div>
-
-            <div class="pt-3 mt-3 border-t border-white/10 flex items-center justify-between text-[11px] text-gray-500 font-mono">
-              <span>ServiceNow REST Dispatcher</span>
-              <span id="outbound-response-time">Ready</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Outbound Session Request History -->
-      <div class="bg-white dark:bg-apple-darkCard rounded-[28px] p-6 border border-black/[0.06] dark:border-white/[0.08] shadow-apple-sm">
-        <div class="flex items-center justify-between mb-4">
-          <div>
-            <h3 class="text-base font-semibold">Session Request History</h3>
-            <p class="text-xs text-apple-slate">Requests executed during this session appear here</p>
-          </div>
-          <span id="history-count-label" class="text-xs font-mono text-apple-slate">0 calls</span>
-        </div>
-        <div id="outbound-history-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          <div class="sm:col-span-2 lg:col-span-3 p-6 text-center text-xs text-apple-slate rounded-2xl bg-apple-bg dark:bg-apple-darkElevated">
-            No outbound requests executed yet.
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ===================================================================== -->
-    <!-- VIEW 4: DATABASE TAB (Clean Blank State until Real Data Arrives)      -->
-    <!-- ===================================================================== -->
-    <section id="view-database" class="view-section space-y-6">
-      <!-- View Header -->
-      <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-        <div>
-          <span class="text-xs font-semibold uppercase tracking-wider text-purple-600 dark:text-purple-400">Session Datastore</span>
-          <h2 class="text-2xl sm:text-4xl font-bold tracking-tight mt-1">Live <code class="font-mono text-apple-blue">db.json</code> State</h2>
-          <p class="text-sm text-apple-slate mt-1">Starts empty and records your real Outbound API responses and Inbound webhook events.</p>
         </div>
 
-        <!-- Database Controls (No Fake Record Generators) -->
-        <div class="flex flex-wrap items-center gap-2.5">
-          <button onclick="exportDatabaseJson()" class="px-4 py-2.5 rounded-full bg-white dark:bg-apple-darkCard hover:bg-black/[0.04] dark:hover:bg-white/[0.08] border border-black/[0.08] dark:border-white/[0.1] text-xs font-medium transition-colors">
-            Export JSON
-          </button>
-          <button onclick="clearDatabaseState()" class="px-4 py-2.5 rounded-full bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-600 text-xs font-medium transition-colors">
-            Clear State
-          </button>
-        </div>
-      </div>
+    </main>
 
-      <!-- Collection Summary Pills -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div class="bg-white dark:bg-apple-darkCard rounded-2xl p-5 border border-black/[0.06] dark:border-white/[0.08] shadow-apple-sm flex items-center justify-between">
-          <div>
-            <div class="text-xs text-apple-slate font-mono">outbound_logs[]</div>
-            <div id="db-stat-outbound" class="text-2xl font-bold mt-0.5">0</div>
-          </div>
-          <span class="px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-500/15 text-apple-blue font-mono text-[11px]">Outbound Sync</span>
-        </div>
+    <!-- Footer -->
+    <footer>
+        <p>OmniBridge Sandbox &copy; 2026. Crafted with pristine attention to detail and Apple-grade design standards.</p>
+    </footer>
 
-        <div class="bg-white dark:bg-apple-darkCard rounded-2xl p-5 border border-black/[0.06] dark:border-white/[0.08] shadow-apple-sm flex items-center justify-between">
-          <div>
-            <div class="text-xs text-apple-slate font-mono">inbound_events[]</div>
-            <div id="db-stat-inbound" class="text-2xl font-bold mt-0.5">0</div>
-          </div>
-          <span class="px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-mono text-[11px]">Inbound Sync</span>
-        </div>
-      </div>
-
-      <!-- Live JSON State Inspector -->
-      <div class="bg-[#161617] rounded-[28px] p-6 border border-black/10 shadow-apple-md dark-pane">
-        <div class="flex items-center justify-between pb-4 mb-4 border-b border-white/10">
-          <div class="flex items-center gap-2">
-            <span class="w-3 h-3 rounded-full bg-[#FF5F56]"></span>
-            <span class="w-3 h-3 rounded-full bg-[#FFBD2E]"></span>
-            <span class="w-3 h-3 rounded-full bg-[#27C93F]"></span>
-            <span class="ml-2 font-mono text-xs text-gray-400">data/db.json</span>
-          </div>
-          <button onclick="copyDatabaseJson()" class="px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 text-xs text-white font-medium transition-colors">
-            Copy db.json
-          </button>
-        </div>
-
-        <pre id="db-json-output" class="font-mono text-xs leading-relaxed text-gray-200 overflow-auto max-h-[440px] code-scroll"></pre>
-      </div>
-    </section>
-
-  </main>
-
-  <!-- Minimalist Footer -->
-  <footer class="border-t border-black/[0.06] dark:border-white/[0.08] py-8 px-4 sm:px-6 text-xs text-apple-slate">
-    <div class="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-      <div class="flex items-center gap-2">
-        <span class="font-semibold text-apple-ink dark:text-white">OmniBridge Sandbox</span>
-        <span>· ServiceNow API &amp; Webhook Studio</span>
-      </div>
-      <div>
-        Basic · OAuth 1.0 · OAuth 2.0 Compliant · © 2026
-      </div>
-    </div>
-  </footer>
-
-  <!-- Complete Application Logic -->
-  <script>
-    // =========================================================================
-    // 1. CLEAN BLANK DATASTORE (NO DEMO DATA)
-    // =========================================================================
-    let dbState = {
-      outbound_logs: [],
-      inbound_events: []
-    };
-
-    let selectedInboundId = null;
-    let lastLatencyText = "—";
-    let lastOutboundResponseRaw = "";
-    let lastOutboundHeadersRaw = "";
-
-    let outboundHeaders = [
-      { key: "Accept", value: "application/json" },
-      { key: "Content-Type", value: "application/json" }
-    ];
-
-    let outboundHistory = [];
-    let activityFeed = [];
-    let activeConnectionsCount = 0;
-
-    // =========================================================================
-    // 2. LIVE TICKING CLOCK & CONNECTION STATUS INDICATOR
-    // =========================================================================
-    function startLiveClock() {
-      const clockEl = document.getElementById('nav-live-clock');
-      if (!clockEl) return;
-
-      const updateClock = () => {
-        const now = new Date();
-        const dateStr = now.toLocaleDateString('en-IN', {
-          day: '2-digit',
-          month: 'short',
-          year: 'numeric'
-        });
-        const timeStr = now.toLocaleTimeString('en-IN', {
-          hour12: false,
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit'
-        });
-        clockEl.textContent = `${dateStr} · ${timeStr} IST`;
-      };
-
-      updateClock();
-      setInterval(updateClock, 1000);
-    }
-
-    function setConnectionActive(isActive) {
-      activeConnectionsCount = Math.max(0, activeConnectionsCount + (isActive ? 1 : -1));
-      const indicator = document.getElementById('nav-conn-indicator');
-      const label = document.getElementById('nav-conn-label');
-      const pill = document.getElementById('nav-conn-pill');
-      if (!indicator || !label || !pill) return;
-
-      if (activeConnectionsCount > 0) {
-        indicator.className = 'inline-block w-2.5 h-2.5 rounded-full blink-green-active';
-        indicator.textContent = '';
-        label.textContent = 'Connecting...';
-        pill.classList.add('border-[#34C759]/50');
-      } else {
-        indicator.className = 'inline-flex items-center justify-center w-4 h-4 rounded-full bg-[#34C759]/15 text-[#34C759] font-bold text-[10px]';
-        indicator.textContent = '✓';
-        label.textContent = 'Connected';
-        pill.classList.remove('border-[#34C759]/50');
-      }
-    }
-
-    // =========================================================================
-    // 3. EXCLUSIVE TAB NAVIGATION
-    // =========================================================================
-    function navigateTo(viewName) {
-      document.querySelectorAll('.view-section').forEach(sec => {
-        sec.classList.remove('active-view');
-      });
-
-      document.querySelectorAll('.nav-pill').forEach(btn => {
-        btn.classList.remove('active');
-      });
-
-      const targetView = document.getElementById(`view-${viewName}`);
-      const targetBtn = document.getElementById(`nav-tab-${viewName}`);
-      if (targetView) targetView.classList.add('active-view');
-      if (targetBtn) targetBtn.classList.add('active');
-
-      if (viewName === 'home') renderHomeDashboard();
-      if (viewName === 'inbound') renderInboundInspector();
-      if (viewName === 'outbound') {
-        renderOutboundHeaders();
-        renderOutboundHistory();
-      }
-      if (viewName === 'database') renderDatabaseView();
-
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-
-    // =========================================================================
-    // 3. UTILITIES (JSON Highlighting, Toast, Clipboard, OAuth Helpers)
-    // =========================================================================
-    function syntaxHighlightJson(obj) {
-      const jsonStr = typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2);
-      return jsonStr
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, (match) => {
-          let cls = 'json-number';
-          if (/^"/.test(match)) {
-            cls = /:$/.test(match) ? 'json-key' : 'json-string';
-          } else if (/true|false/.test(match)) {
-            cls = 'json-boolean';
-          } else if (/null/.test(match)) {
-            cls = 'json-null';
-          }
-          return `<span class="${cls}">${match}</span>`;
-        });
-    }
-
-    function showToast(message, isError = false) {
-      const container = document.getElementById('toast-container');
-      const el = document.createElement('div');
-      el.className = 'pointer-events-auto flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-apple-ink/95 dark:bg-white/95 text-white dark:text-apple-ink text-xs font-medium shadow-apple-md transform translate-y-3 opacity-0 transition-all duration-300';
-      el.innerHTML = `<span class="w-2 h-2 rounded-full ${isError ? 'bg-rose-500' : 'bg-apple-blue'}"></span><span>${message}</span>`;
-      container.appendChild(el);
-
-      requestAnimationFrame(() => {
-        el.classList.remove('translate-y-3', 'opacity-0');
-      });
-
-      setTimeout(() => {
-        el.classList.add('translate-y-3', 'opacity-0');
-        setTimeout(() => el.remove(), 300);
-      }, 2800);
-    }
-
-    function copyToClipboard(text, msg = 'Copied to clipboard') {
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      ta.style.position = 'fixed';
-      ta.style.opacity = '0';
-      document.body.appendChild(ta);
-      ta.select();
-      try {
-        document.execCommand('copy');
-        showToast(msg);
-      } catch (err) {
-        showToast('Copy failed', true);
-      }
-      document.body.removeChild(ta);
-    }
-
-    function getCurrentTimeIST() {
-      return new Date().toLocaleTimeString('en-IN', { hour12: false }) + ' IST';
-    }
-
-    function encodeBase64Utf8(str) {
-      const bytes = new TextEncoder().encode(str);
-      let bin = '';
-      bytes.forEach(b => bin += String.fromCharCode(b));
-      return btoa(bin);
-    }
-
-    async function computeHmacSha256Hex(secret, message) {
-      const enc = new TextEncoder();
-      const key = await crypto.subtle.importKey(
-        'raw',
-        enc.encode(secret || 'sn-secret'),
-        { name: 'HMAC', hash: 'SHA-256' },
-        false,
-        ['sign']
-      );
-      const sig = await crypto.subtle.sign('HMAC', key, enc.encode(message));
-      return Array.from(new Uint8Array(sig))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
-    }
-
-    function updateGlobalBadges() {
-      const totalStored = dbState.outbound_logs.length + dbState.inbound_events.length;
-      document.getElementById('nav-badge-inbound').textContent = dbState.inbound_events.length;
-      document.getElementById('nav-badge-db').textContent = totalStored;
-
-      document.getElementById('metric-outbound-count').textContent = dbState.outbound_logs.length;
-      document.getElementById('metric-inbound-count').textContent = dbState.inbound_events.length;
-      document.getElementById('metric-stored-count').textContent = totalStored;
-      document.getElementById('metric-last-latency').textContent = lastLatencyText;
-    }
-
-    // =========================================================================
-    // 4. HOME TAB RENDERER
-    // =========================================================================
-    function renderHomeDashboard() {
-      updateGlobalBadges();
-      const feedEl = document.getElementById('home-activity-feed');
-
-      if (activityFeed.length === 0) {
-        feedEl.innerHTML = `
-          <div class="p-8 text-center rounded-2xl bg-apple-bg dark:bg-apple-darkElevated border border-black/[0.04] dark:border-white/[0.06]">
-            <p class="text-xs font-medium text-apple-ink dark:text-white">No activity recorded yet</p>
-            <p class="text-[11px] text-apple-slate mt-1">Execute an Outbound REST call or test an Inbound payload to populate live telemetry.</p>
-          </div>
-        `;
-        return;
-      }
-
-      feedEl.innerHTML = activityFeed.map(item => {
-        const isInbound = item.type === 'INBOUND';
-        const isOk = item.status.startsWith('2');
-        return `
-          <div class="p-3.5 rounded-2xl bg-apple-bg dark:bg-apple-darkElevated border border-black/[0.04] dark:border-white/[0.06] flex items-center justify-between gap-3">
-            <div class="min-w-0">
-              <div class="flex items-center gap-2">
-                <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${isInbound ? 'bg-blue-500/15 text-apple-blue' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'}">${item.type}</span>
-                <span class="text-[11px] text-apple-slate">${item.time}</span>
-              </div>
-              <div class="font-mono text-xs font-medium truncate mt-1">${item.title}</div>
-            </div>
-            <span class="font-mono text-[11px] ${isOk ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500'} shrink-0">${item.status}</span>
-          </div>
-        `;
-      }).join('');
-    }
-
-    // =========================================================================
-    // 5. INBOUND TAB LOGIC (Unified Endpoint + Auth Policy + Validator)
-    // =========================================================================
-    function initInboundEndpoint() {
-      const origin = window.location.origin && window.location.origin !== 'null'
-        ? window.location.origin
-        : 'http://localhost:3000';
-      document.getElementById('inbound-url-input').value = `${origin}/api/inbound`;
-    }
-
-    function copyInboundUrl() {
-      const url = document.getElementById('inbound-url-input').value.trim();
-      if (!url) return;
-      copyToClipboard(url, 'Inbound Endpoint URL copied');
-    }
-
-    function renderInboundAuthFields() {
-      const type = document.getElementById('inbound-auth-type').value;
-      const container = document.getElementById('inbound-auth-fields');
-      const badge = document.getElementById('inbound-auth-badge');
-
-      const labels = {
-        none: 'No Auth',
-        basic: 'Basic Auth',
-        oauth2: 'OAuth 2.0 Bearer',
-        apikey: 'API Key',
-        hmac: 'HMAC SHA-256',
-        mtls: 'Mutual Auth (mTLS)',
-        session: 'Session Token',
-        oidc: '3rd-Party OIDC'
-      };
-      badge.textContent = labels[type] || 'No Auth';
-
-      if (type === 'none') {
-        container.innerHTML = `
-          <div class="p-3 rounded-xl bg-apple-bg dark:bg-apple-darkElevated text-[11px] text-apple-slate">
-            Incoming requests do not require authentication credentials.
-          </div>
-        `;
-      } else if (type === 'basic') {
-        container.innerHTML = `
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Expected Username</label>
-              <input id="in-auth-basic-user" type="text" placeholder="sn_integration_user" class="w-full px-3 py-2 rounded-xl bg-apple-bg dark:bg-apple-darkElevated border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Expected Password</label>
-              <input id="in-auth-basic-pass" type="password" placeholder="••••••••" class="w-full px-3 py-2 rounded-xl bg-apple-bg dark:bg-apple-darkElevated border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-          </div>
-        `;
-      } else if (type === 'oauth2') {
-        container.innerHTML = `
-          <div>
-            <label class="block text-[11px] text-apple-slate mb-1">Expected OAuth 2.0 Bearer Token</label>
-            <div class="flex gap-2">
-              <input id="in-auth-o2-token" type="text" placeholder="Paste or generate expected token" class="flex-1 px-3 py-2 rounded-xl bg-apple-bg dark:bg-apple-darkElevated border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-              <button type="button" onclick="generateInboundToken('in-auth-o2-token', 'ob_sn_')" class="px-3 py-2 rounded-xl bg-apple-bg dark:bg-apple-darkElevated hover:border-apple-blue border border-black/[0.08] dark:border-white/[0.1] text-[11px] font-medium text-apple-blue whitespace-nowrap">
-                Generate
-              </button>
-            </div>
-          </div>
-        `;
-      } else if (type === 'apikey') {
-        container.innerHTML = `
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">API Key Header Name</label>
-              <input id="in-auth-ak-header" type="text" value="x-sn-apikey" class="w-full px-3 py-2 rounded-xl bg-apple-bg dark:bg-apple-darkElevated border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Expected API Key Value</label>
-              <div class="flex gap-1.5">
-                <input id="in-auth-ak-value" type="text" placeholder="sn_key_..." class="flex-1 px-3 py-2 rounded-xl bg-apple-bg dark:bg-apple-darkElevated border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-                <button type="button" onclick="generateInboundToken('in-auth-ak-value', 'sn_ak_')" class="px-2.5 py-2 rounded-xl bg-apple-bg dark:bg-apple-darkElevated hover:border-apple-blue border border-black/[0.08] dark:border-white/[0.1] text-[11px] font-medium text-apple-blue">Gen</button>
-              </div>
-            </div>
-          </div>
-        `;
-      } else if (type === 'hmac') {
-        container.innerHTML = `
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Signature Header</label>
-              <input id="in-auth-hmac-header" type="text" value="X-ServiceNow-Signature" class="w-full px-3 py-2 rounded-xl bg-apple-bg dark:bg-apple-darkElevated border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">HMAC Secret Key (SHA-256)</label>
-              <input id="in-auth-hmac-secret" type="password" placeholder="Shared HMAC secret" class="w-full px-3 py-2 rounded-xl bg-apple-bg dark:bg-apple-darkElevated border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-          </div>
-        `;
-      } else if (type === 'mtls') {
-        container.innerHTML = `
-          <div class="space-y-2">
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Expected Client Certificate Subject / Fingerprint</label>
-              <input id="in-auth-mtls-fp" type="text" placeholder="CN=servicenow-client.example.com" class="w-full px-3 py-2 rounded-xl bg-apple-bg dark:bg-apple-darkElevated border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Trusted CA / Client Certificate PEM</label>
-              <textarea id="in-auth-mtls-pem" rows="2" placeholder="-----BEGIN CERTIFICATE-----" class="w-full px-3 py-2 rounded-xl bg-apple-bg dark:bg-apple-darkElevated border border-black/[0.08] dark:border-white/[0.1] font-mono text-[11px] outline-none focus:border-apple-blue resize-none"></textarea>
-            </div>
-          </div>
-        `;
-      } else if (type === 'session') {
-        container.innerHTML = `
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Expected JSESSIONID</label>
-              <input id="in-auth-sess-jsid" type="text" placeholder="JSESSIONID value" class="w-full px-3 py-2 rounded-xl bg-apple-bg dark:bg-apple-darkElevated border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Expected X-UserToken</label>
-              <input id="in-auth-sess-utoken" type="text" placeholder="X-UserToken value" class="w-full px-3 py-2 rounded-xl bg-apple-bg dark:bg-apple-darkElevated border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-          </div>
-        `;
-      } else if (type === 'oidc') {
-        container.innerHTML = `
-          <div class="space-y-2">
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">OIDC Identity Provider Issuer URL</label>
-              <input id="in-auth-oidc-issuer" type="text" placeholder="https://login.microsoftonline.com/<tenant>/v2.0" class="w-full px-3 py-2 rounded-xl bg-apple-bg dark:bg-apple-darkElevated border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Expected OIDC ID Token (JWT)</label>
-              <input id="in-auth-oidc-token" type="text" placeholder="eyJhbGciOiJSUzI1NiIs..." class="w-full px-3 py-2 rounded-xl bg-apple-bg dark:bg-apple-darkElevated border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-          </div>
-        `;
-      }
-    }
-
-    function generateInboundToken(inputId, prefix) {
-      const rand = Array.from(crypto.getRandomValues(new Uint8Array(16)))
-        .map(b => b.toString(16).padStart(2, '0')).join('');
-      const input = document.getElementById(inputId);
-      if (input) {
-        input.value = `${prefix}${rand}`;
-        showToast('Generated credential');
-      }
-    }
-
-    async function autoFillMatchingInboundAuth() {
-      const type = document.getElementById('inbound-auth-type').value;
-      const target = document.getElementById('inbound-test-auth-header');
-
-      if (type === 'none') {
-        target.value = '';
-        showToast('No Auth selected — header cleared');
-      } else if (type === 'basic') {
-        const u = document.getElementById('in-auth-basic-user')?.value || '';
-        const p = document.getElementById('in-auth-basic-pass')?.value || '';
-        if (!u || !p) return showToast('Enter Expected Username & Password first', true);
-        target.value = `Basic ${encodeBase64Utf8(`${u}:${p}`)}`;
-        showToast('Populated valid Basic Auth header');
-      } else if (type === 'oauth2') {
-        const tok = document.getElementById('in-auth-o2-token')?.value || '';
-        if (!tok) return showToast('Enter or generate Expected Bearer Token first', true);
-        target.value = `Bearer ${tok}`;
-        showToast('Populated valid OAuth 2.0 Bearer header');
-      } else if (type === 'apikey') {
-        const keyVal = document.getElementById('in-auth-ak-value')?.value || '';
-        if (!keyVal) return showToast('Enter or generate Expected API Key first', true);
-        target.value = keyVal;
-        showToast('Populated valid API Key');
-      } else if (type === 'hmac') {
-        const secret = document.getElementById('in-auth-hmac-secret')?.value || '';
-        const bodyRaw = document.getElementById('inbound-test-body').value.trim() || '{}';
-        if (!secret) return showToast('Enter HMAC Secret Key first', true);
-        const sig = await computeHmacSha256Hex(secret, bodyRaw);
-        target.value = `sha256=${sig}`;
-        showToast('Computed valid HMAC-SHA256 signature');
-      } else if (type === 'mtls') {
-        const fp = document.getElementById('in-auth-mtls-fp')?.value || '';
-        if (!fp) return showToast('Enter Expected Client Certificate Subject first', true);
-        target.value = fp;
-        showToast('Populated valid mTLS Client Certificate DN');
-      } else if (type === 'session') {
-        const jsid = document.getElementById('in-auth-sess-jsid')?.value || '';
-        const utok = document.getElementById('in-auth-sess-utoken')?.value || '';
-        if (!jsid || !utok) return showToast('Enter Expected JSESSIONID & X-UserToken first', true);
-        target.value = `JSESSIONID=${jsid}; X-UserToken=${utok}`;
-        showToast('Populated valid Session Token credentials');
-      } else if (type === 'oidc') {
-        const idTok = document.getElementById('in-auth-oidc-token')?.value || '';
-        if (!idTok) return showToast('Enter Expected OIDC ID Token first', true);
-        target.value = `Bearer ${idTok}`;
-        showToast('Populated valid OIDC Bearer ID Token');
-      }
-    }
-
-    async function validateInboundAuthHeader(incomingAuthHeader, bodyRaw) {
-      const type = document.getElementById('inbound-auth-type').value;
-      const headerVal = (incomingAuthHeader || '').trim();
-
-      if (type === 'none') {
-        return { valid: true, status: '200 OK', detail: 'No Auth Policy (Open)', headerName: 'Authorization' };
-      }
-
-      if (!headerVal) {
-        return { valid: false, status: '401 Unauthorized', detail: 'Missing authentication credential', headerName: 'Authorization' };
-      }
-
-      if (type === 'basic') {
-        const u = document.getElementById('in-auth-basic-user')?.value || '';
-        const p = document.getElementById('in-auth-basic-pass')?.value || '';
-        const expected = `Basic ${encodeBase64Utf8(`${u}:${p}`)}`;
-        const ok = headerVal === expected;
-        return ok
-          ? { valid: true, status: '200 OK', detail: 'Basic Auth Verified', headerName: 'Authorization' }
-          : { valid: false, status: '401 Unauthorized', detail: 'Basic credentials mismatch', headerName: 'Authorization' };
-      }
-
-      if (type === 'oauth2') {
-        const tok = document.getElementById('in-auth-o2-token')?.value || '';
-        const ok = tok && headerVal === `Bearer ${tok}`;
-        return ok
-          ? { valid: true, status: '200 OK', detail: 'OAuth 2.0 Bearer Token Verified', headerName: 'Authorization' }
-          : { valid: false, status: '401 Unauthorized', detail: 'OAuth 2.0 Bearer token invalid', headerName: 'Authorization' };
-      }
-
-      if (type === 'apikey') {
-        const hName = document.getElementById('in-auth-ak-header')?.value.trim() || 'x-sn-apikey';
-        const expectedKey = document.getElementById('in-auth-ak-value')?.value || '';
-        const ok = expectedKey && headerVal === expectedKey;
-        return ok
-          ? { valid: true, status: '200 OK', detail: `API Key Verified (${hName})`, headerName: hName }
-          : { valid: false, status: '401 Unauthorized', detail: `Invalid API Key for ${hName}`, headerName: hName };
-      }
-
-      if (type === 'hmac') {
-        const hName = document.getElementById('in-auth-hmac-header')?.value.trim() || 'X-ServiceNow-Signature';
-        const secret = document.getElementById('in-auth-hmac-secret')?.value || '';
-        const expectedSig = `sha256=${await computeHmacSha256Hex(secret, bodyRaw || '{}')}`;
-        const ok = secret && headerVal === expectedSig;
-        return ok
-          ? { valid: true, status: '200 OK', detail: 'HMAC-SHA256 Signature Verified', headerName: hName }
-          : { valid: false, status: '401 Unauthorized', detail: 'HMAC-SHA256 signature mismatch', headerName: hName };
-      }
-
-      if (type === 'mtls') {
-        const fp = document.getElementById('in-auth-mtls-fp')?.value.trim() || '';
-        const ok = fp && headerVal === fp;
-        return ok
-          ? { valid: true, status: '200 OK', detail: 'mTLS Client Certificate Verified', headerName: 'X-Client-Cert-DN' }
-          : { valid: false, status: '401 Unauthorized', detail: 'mTLS Client Certificate DN mismatch', headerName: 'X-Client-Cert-DN' };
-      }
-
-      if (type === 'session') {
-        const jsid = document.getElementById('in-auth-sess-jsid')?.value.trim() || '';
-        const utok = document.getElementById('in-auth-sess-utoken')?.value.trim() || '';
-        const expected = `JSESSIONID=${jsid}; X-UserToken=${utok}`;
-        const ok = jsid && utok && headerVal === expected;
-        return ok
-          ? { valid: true, status: '200 OK', detail: 'Session Token & X-UserToken Verified', headerName: 'X-UserToken' }
-          : { valid: false, status: '401 Unauthorized', detail: 'JSESSIONID or X-UserToken mismatch', headerName: 'X-UserToken' };
-      }
-
-      if (type === 'oidc') {
-        const idTok = document.getElementById('in-auth-oidc-token')?.value.trim() || '';
-        const ok = idTok && headerVal === `Bearer ${idTok}`;
-        return ok
-          ? { valid: true, status: '200 OK', detail: '3rd-Party OIDC ID Token Verified', headerName: 'Authorization' }
-          : { valid: false, status: '401 Unauthorized', detail: 'OIDC ID Token mismatch', headerName: 'Authorization' };
-      }
-
-      return { valid: false, status: '401 Unauthorized', detail: 'Unsupported auth scheme', headerName: 'Authorization' };
-    }
-
-    async function dispatchTestInboundEvent() {
-      const method = document.getElementById('inbound-method-select').value;
-      const endpoint = document.getElementById('inbound-url-input').value.trim() || '/api/inbound';
-      const authHeader = document.getElementById('inbound-test-auth-header').value.trim();
-      const extraHeadersRaw = document.getElementById('inbound-test-headers').value.trim();
-      const bodyRaw = document.getElementById('inbound-test-body').value.trim();
-
-      let parsedHeaders = {};
-      let parsedBody = {};
-
-      try {
-        parsedHeaders = extraHeadersRaw ? JSON.parse(extraHeadersRaw) : {};
-      } catch (e) {
-        showToast('Invalid JSON in Additional Headers', true);
-        return;
-      }
-
-      try {
-        parsedBody = bodyRaw ? JSON.parse(bodyRaw) : {};
-      } catch (e) {
-        showToast('Invalid JSON in Incoming Body', true);
-        return;
-      }
-
-      setConnectionActive(true);
-      await new Promise(r => setTimeout(r, 380));
-
-      try {
-        const authCheck = await validateInboundAuthHeader(authHeader, bodyRaw || '{}');
-        if (authHeader) {
-          parsedHeaders[authCheck.headerName] = authHeader;
-        }
-
-        const eventRecord = {
-          id: `in_${Date.now().toString().slice(-6)}`,
-          endpoint,
-          method,
-          status: authCheck.status,
-          authVerified: authCheck.valid,
-          authDetail: authCheck.detail,
-          timestamp: getCurrentTimeIST(),
-          headers: parsedHeaders,
-          payload: parsedBody
+    <!-- Script Interactions -->
+    <script>
+        // Global Datastore State
+        let dbState = {
+            outbound_logs: [],
+            inbound_events: []
         };
 
-        dbState.inbound_events.unshift(eventRecord);
-        selectedInboundId = eventRecord.id;
+        // Tab Switching Logic
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.nav-links a').forEach(el => el.classList.remove('active'));
+            
+            document.getElementById('tab-' + tabId).classList.add('active');
+            const navEl = document.getElementById('nav-' + tabId);
+            if (navEl) navEl.classList.add('active');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
 
-        activityFeed.unshift({
-          type: 'INBOUND',
-          title: `${method} ${endpoint} (${authCheck.detail})`,
-          time: getCurrentTimeIST(),
-          status: authCheck.status
-        });
-
-        updateGlobalBadges();
-        renderInboundInspector();
-        showToast(`${authCheck.status} — ${authCheck.detail}`, !authCheck.valid);
-      } finally {
-        setConnectionActive(false);
-      }
-    }
-
-    function renderInboundInspector() {
-      const listEl = document.getElementById('inbound-queue-list');
-      const detailPane = document.getElementById('inbound-detail-pane');
-      const filterTerm = (document.getElementById('inbound-filter-input').value || '').toLowerCase();
-
-      if (dbState.inbound_events.length === 0) {
-        listEl.innerHTML = `<div class="p-8 text-center text-xs text-apple-slate rounded-2xl bg-apple-bg dark:bg-apple-darkElevated">No inbound requests received yet. Configure your authorization policy and send a test payload.</div>`;
-        detailPane.classList.add('hidden');
-        return;
-      }
-
-      const filtered = dbState.inbound_events.filter(ev =>
-        ev.id.toLowerCase().includes(filterTerm) ||
-        ev.endpoint.toLowerCase().includes(filterTerm) ||
-        ev.authDetail.toLowerCase().includes(filterTerm) ||
-        JSON.stringify(ev.payload).toLowerCase().includes(filterTerm)
-      );
-
-      if (filtered.length === 0) {
-        listEl.innerHTML = `<div class="p-6 text-center text-xs text-apple-slate rounded-2xl bg-apple-bg dark:bg-apple-darkElevated">No inbound events match your filter.</div>`;
-        detailPane.classList.add('hidden');
-        return;
-      }
-
-      listEl.innerHTML = filtered.map(ev => {
-        const isSelected = ev.id === selectedInboundId;
-        return `
-          <button onclick="selectInboundWebhook('${ev.id}')" class="w-full text-left p-3.5 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
-            isSelected
-              ? 'bg-blue-50/70 dark:bg-blue-500/15 border-apple-blue/50'
-              : 'bg-apple-bg dark:bg-apple-darkElevated border-transparent hover:border-black/10 dark:hover:border-white/10'
-          }">
-            <div class="min-w-0">
-              <div class="flex items-center gap-2">
-                <span class="font-mono text-[10px] font-bold px-2 py-0.5 rounded-full ${ev.authVerified ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/15 text-rose-500'}">${ev.status}</span>
-                <span class="text-[11px] font-medium truncate">${ev.authDetail}</span>
-              </div>
-              <div class="font-mono text-xs text-apple-slate truncate mt-1">${ev.method} ${ev.endpoint}</div>
-            </div>
-            <span class="font-mono text-[11px] text-apple-slate shrink-0">${ev.timestamp}</span>
-          </button>
-        `;
-      }).join('');
-
-      const activeEv = filtered.find(w => w.id === selectedInboundId) || filtered[0];
-      if (activeEv) {
-        selectedInboundId = activeEv.id;
-        detailPane.classList.remove('hidden');
-        document.getElementById('detail-hook-event').textContent = `${activeEv.method} ${activeEv.endpoint}`;
-
-        const badge = document.getElementById('detail-hook-badge');
-        badge.textContent = `${activeEv.status} · ${activeEv.authDetail}`;
-        badge.className = activeEv.authVerified
-          ? 'px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-mono text-[11px] font-medium shrink-0'
-          : 'px-2.5 py-0.5 rounded-full bg-rose-500/15 text-rose-500 font-mono text-[11px] font-medium shrink-0';
-
-        document.getElementById('detail-hook-headers').innerHTML = Object.entries(activeEv.headers).length
-          ? Object.entries(activeEv.headers).map(([k, v]) => `<div><span class="text-apple-ink dark:text-white font-semibold">${k}:</span> ${v}</div>`).join('')
-          : '<div>No headers attached</div>';
-
-        document.getElementById('detail-hook-payload').innerHTML = syntaxHighlightJson(activeEv.payload);
-      }
-    }
-
-    function selectInboundWebhook(id) {
-      selectedInboundId = id;
-      renderInboundInspector();
-    }
-
-    function copySelectedInboundPayload() {
-      const ev = dbState.inbound_events.find(w => w.id === selectedInboundId);
-      if (ev) {
-        copyToClipboard(JSON.stringify(ev.payload, null, 2), 'Inbound JSON payload copied');
-      }
-    }
-
-    function clearInboundEvents() {
-      dbState.inbound_events = [];
-      selectedInboundId = null;
-      updateGlobalBadges();
-      renderInboundInspector();
-      showToast('Inbound event log cleared');
-    }
-
-    // =========================================================================
-    // 6. OUTBOUND TAB LOGIC (ServiceNow Auth Suite + Live fetch() Dispatcher)
-    // =========================================================================
-    function switchOutboundSubtab(tab) {
-      document.getElementById('outbound-subtab-auth').classList.toggle('hidden', tab !== 'auth');
-      document.getElementById('outbound-subtab-body').classList.toggle('hidden', tab !== 'body');
-      document.getElementById('outbound-subtab-headers').classList.toggle('hidden', tab !== 'headers');
-
-      ['auth', 'body', 'headers'].forEach(name => {
-        const btn = document.getElementById(`subtab-btn-${name}`);
-        btn.classList.toggle('active', tab === name);
-        btn.classList.toggle('text-apple-slate', tab !== name);
-      });
-
-      document.getElementById('format-json-btn').classList.toggle('hidden', tab !== 'body');
-    }
-
-    function renderOutboundAuthFields() {
-      const type = document.getElementById('outbound-auth-type').value;
-      const container = document.getElementById('outbound-auth-fields');
-      const summary = document.getElementById('outbound-auth-summary');
-
-      const names = {
-        none: 'No Auth',
-        basic: 'Basic Auth (Base64)',
-        oauth2: 'OAuth 2.0',
-        apikey: 'API Key (x-sn-apikey)',
-        hmac: 'HMAC SHA-256',
-        mtls: 'Mutual Auth (mTLS)',
-        session: 'Session Token',
-        oidc: '3rd-Party OIDC ID Token'
-      };
-      summary.textContent = `Auth: ${names[type] || 'No Auth'}`;
-
-      if (type === 'none') {
-        container.innerHTML = `
-          <div class="p-3.5 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.06] dark:border-white/[0.08] text-xs text-apple-slate">
-            No authentication header will be injected automatically.
-          </div>
-        `;
-      } else if (type === 'basic') {
-        container.innerHTML = `
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">ServiceNow Username</label>
-              <input id="out-auth-basic-user" type="text" placeholder="admin" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Password</label>
-              <input id="out-auth-basic-pass" type="password" placeholder="••••••••" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-          </div>
-        `;
-      } else if (type === 'oauth2') {
-        container.innerHTML = `
-          <div class="space-y-2.5">
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <div>
-                <label class="block text-[11px] text-apple-slate mb-1">ServiceNow OAuth 2.0 Grant Type</label>
-                <select id="out-auth-o2-grant" onchange="renderOAuth2GrantSubfields()" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] text-xs font-medium outline-none focus:border-apple-blue">
-                  <option value="authorization_code">Authorization Code</option>
-                  <option value="client_credentials">Client Credentials</option>
-                  <option value="password" selected>Password (ROPC)</option>
-                  <option value="urn:ietf:params:oauth:grant-type:jwt-bearer">JWT Bearer</option>
-                  <option value="urn:ietf:params:oauth:grant-type:saml2-bearer">SAML 2.0 Bearer</option>
-                  <option value="urn:ietf:params:oauth:grant-type:token-exchange">Workload Identity Federation</option>
-                </select>
-              </div>
-              <div>
-                <label class="block text-[11px] text-apple-slate mb-1">Token Endpoint URL</label>
-                <input id="out-auth-o2-token-url" type="text" placeholder="https://devXXXXX.service-now.com/oauth_token.do" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-              </div>
-            </div>
-
-            <div id="out-auth-o2-dynamic-fields" class="space-y-2.5"></div>
-
-            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
-              <button type="button" onclick="fetchServiceNowOAuth2Token()" id="btn-get-oauth2-token" class="px-4 py-2 rounded-xl bg-apple-ink dark:bg-white text-white dark:text-apple-ink hover:opacity-90 text-xs font-medium transition-opacity shrink-0">
-                Get Access Token
-              </button>
-              <input id="out-auth-o2-bearer" type="text" placeholder="Bearer Access Token (auto-filled or paste directly)" class="flex-1 px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-          </div>
-        `;
-        renderOAuth2GrantSubfields();
-      } else if (type === 'apikey') {
-        container.innerHTML = `
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Placement</label>
-              <select id="out-auth-ak-in" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] text-xs outline-none focus:border-apple-blue">
-                <option value="header" selected>Header</option>
-                <option value="query">Query Param</option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Key Name</label>
-              <input id="out-auth-ak-name" type="text" value="x-sn-apikey" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">API Key Value</label>
-              <input id="out-auth-ak-val" type="password" placeholder="ServiceNow REST API Key" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-          </div>
-        `;
-      } else if (type === 'hmac') {
-        container.innerHTML = `
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Signature Header Name</label>
-              <input id="out-auth-hmac-header" type="text" value="X-ServiceNow-Signature" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">HMAC Secret Key (SHA-256)</label>
-              <input id="out-auth-hmac-secret" type="password" placeholder="HMAC Signing Secret" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-          </div>
-        `;
-      } else if (type === 'mtls') {
-        container.innerHTML = `
-          <div class="space-y-2.5">
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Mutual Auth Protocol Profile / Subject DN</label>
-              <input id="out-auth-mtls-profile" type="text" placeholder="sn_mtls_profile" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <div>
-                <label class="block text-[11px] text-apple-slate mb-1">Client Certificate (PEM)</label>
-                <textarea id="out-auth-mtls-cert" rows="2" placeholder="-----BEGIN CERTIFICATE-----" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-[11px] outline-none focus:border-apple-blue resize-none"></textarea>
-              </div>
-              <div>
-                <label class="block text-[11px] text-apple-slate mb-1">Private Key (PEM)</label>
-                <textarea id="out-auth-mtls-key" rows="2" placeholder="-----BEGIN PRIVATE KEY-----" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-[11px] outline-none focus:border-apple-blue resize-none"></textarea>
-              </div>
-            </div>
-          </div>
-        `;
-      } else if (type === 'session') {
-        container.innerHTML = `
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">JSESSIONID (Cookie)</label>
-              <input id="out-auth-sess-jsid" type="text" placeholder="ServiceNow JSESSIONID" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">X-UserToken (CSRF / Session Header)</label>
-              <input id="out-auth-sess-utoken" type="password" placeholder="g_ck user token" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-          </div>
-        `;
-      } else if (type === 'oidc') {
-        container.innerHTML = `
-          <div class="space-y-2.5">
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">3rd-Party IdP Issuer URL</label>
-              <input id="out-auth-oidc-issuer" type="text" placeholder="https://accounts.google.com or https://login.microsoftonline.com/..." class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">OIDC ID Token (Injected as Bearer)</label>
-              <input id="out-auth-oidc-token" type="text" placeholder="eyJhbGciOiJSUzI1NiIs..." class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-          </div>
-        `;
-      }
-    }
-
-    function renderOAuth2GrantSubfields() {
-      const grant = document.getElementById('out-auth-o2-grant')?.value;
-      const box = document.getElementById('out-auth-o2-dynamic-fields');
-      if (!box) return;
-
-      if (grant === 'authorization_code') {
-        box.innerHTML = `
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Authorization URL</label>
-              <input id="out-auth-o2-auth-url" type="text" placeholder="https://devXXXXX.service-now.com/oauth_auth.do" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Redirect URI</label>
-              <input id="out-auth-o2-redirect" type="text" value="${window.location.origin}/oauth/callback" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Client ID</label>
-              <input id="out-auth-o2-client-id" type="text" placeholder="Client ID" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Client Secret</label>
-              <input id="out-auth-o2-client-secret" type="password" placeholder="Client Secret" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Authorization Code</label>
-              <input id="out-auth-o2-code" type="text" placeholder="Returned auth code" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Scope</label>
-              <input id="out-auth-o2-scope" type="text" placeholder="useraccount" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-          </div>
-        `;
-      } else if (grant === 'client_credentials') {
-        box.innerHTML = `
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Client ID</label>
-              <input id="out-auth-o2-client-id" type="text" placeholder="Client ID" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Client Secret</label>
-              <input id="out-auth-o2-client-secret" type="password" placeholder="Client Secret" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Scope</label>
-              <input id="out-auth-o2-scope" type="text" placeholder="optional scope" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-          </div>
-        `;
-      } else if (grant === 'password') {
-        box.innerHTML = `
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Client ID</label>
-              <input id="out-auth-o2-client-id" type="text" placeholder="Client ID" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Client Secret</label>
-              <input id="out-auth-o2-client-secret" type="password" placeholder="Client Secret" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Username</label>
-              <input id="out-auth-o2-user" type="text" placeholder="ServiceNow Username" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Password</label>
-              <input id="out-auth-o2-pass" type="password" placeholder="ServiceNow Password" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-          </div>
-        `;
-      } else if (grant === 'urn:ietf:params:oauth:grant-type:jwt-bearer') {
-        box.innerHTML = `
-          <div class="space-y-2">
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <div>
-                <label class="block text-[11px] text-apple-slate mb-1">Client ID</label>
-                <input id="out-auth-o2-client-id" type="text" placeholder="OAuth JWT Client ID" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-              </div>
-              <div>
-                <label class="block text-[11px] text-apple-slate mb-1">Client Secret</label>
-                <input id="out-auth-o2-client-secret" type="password" placeholder="Client Secret" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-              </div>
-            </div>
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Signed JWT Assertion</label>
-              <input id="out-auth-o2-assertion" type="text" placeholder="eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..." class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-          </div>
-        `;
-      } else if (grant === 'urn:ietf:params:oauth:grant-type:saml2-bearer') {
-        box.innerHTML = `
-          <div class="space-y-2">
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <div>
-                <label class="block text-[11px] text-apple-slate mb-1">Client ID</label>
-                <input id="out-auth-o2-client-id" type="text" placeholder="SAML OAuth Client ID" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-              </div>
-              <div>
-                <label class="block text-[11px] text-apple-slate mb-1">Client Secret</label>
-                <input id="out-auth-o2-client-secret" type="password" placeholder="Client Secret" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-              </div>
-            </div>
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Base64URL SAML 2.0 Assertion</label>
-              <input id="out-auth-o2-assertion" type="text" placeholder="PHNhbWxwOlJlc3BvbnNl..." class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-          </div>
-        `;
-      } else if (grant === 'urn:ietf:params:oauth:grant-type:token-exchange') {
-        box.innerHTML = `
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Audience / Tenant ID</label>
-              <input id="out-auth-o2-client-id" type="text" placeholder="api://servicenow-wif" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-            <div>
-              <label class="block text-[11px] text-apple-slate mb-1">Subject Workload Token</label>
-              <input id="out-auth-o2-assertion" type="text" placeholder="External OIDC/WIF token" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.08] dark:border-white/[0.1] font-mono text-xs outline-none focus:border-apple-blue" />
-            </div>
-          </div>
-        `;
-      }
-    }
-
-    async function fetchServiceNowOAuth2Token() {
-      const tokenUrl = document.getElementById('out-auth-o2-token-url')?.value.trim();
-      const grantType = document.getElementById('out-auth-o2-grant')?.value || 'password';
-      const clientId = document.getElementById('out-auth-o2-client-id')?.value.trim() || '';
-      const clientSecret = document.getElementById('out-auth-o2-client-secret')?.value.trim() || '';
-      const username = document.getElementById('out-auth-o2-user')?.value.trim() || '';
-      const password = document.getElementById('out-auth-o2-pass')?.value || '';
-      const assertion = document.getElementById('out-auth-o2-assertion')?.value.trim() || '';
-      const code = document.getElementById('out-auth-o2-code')?.value.trim() || '';
-      const redirectUri = document.getElementById('out-auth-o2-redirect')?.value.trim() || '';
-      const scope = document.getElementById('out-auth-o2-scope')?.value.trim() || '';
-      const btn = document.getElementById('btn-get-oauth2-token');
-
-      if (!tokenUrl) {
-        showToast('Enter Token Endpoint URL (e.g., https://instance.service-now.com/oauth_token.do)', true);
-        return;
-      }
-
-      const params = new URLSearchParams();
-      params.append('grant_type', grantType);
-      if (clientId) params.append('client_id', clientId);
-      if (clientSecret) params.append('client_secret', clientSecret);
-      if (scope) params.append('scope', scope);
-
-      if (grantType === 'password') {
-        params.append('username', username);
-        params.append('password', password);
-      } else if (grantType === 'authorization_code') {
-        params.append('code', code);
-        params.append('redirect_uri', redirectUri);
-      } else if (grantType.includes('bearer')) {
-        params.append('assertion', assertion);
-      } else if (grantType.includes('token-exchange')) {
-        params.append('subject_token', assertion);
-        params.append('subject_token_type', 'urn:ietf:params:oauth:token-type:jwt');
-      }
-
-      btn.textContent = 'Requesting...';
-      setConnectionActive(true);
-
-      try {
-        const res = await fetch(tokenUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: params.toString()
-        });
-        const data = await res.json();
-        if (data.access_token) {
-          document.getElementById('out-auth-o2-bearer').value = data.access_token;
-          showToast('OAuth 2.0 Access Token retrieved');
-        } else {
-          showToast(data.error_description || data.error || 'Token endpoint did not return access_token', true);
-        }
-      } catch (err) {
-        showToast('Token request blocked by CORS or network error — paste token manually or configure ServiceNow CORS rule', true);
-      } finally {
-        btn.textContent = 'Get Access Token';
-        setConnectionActive(false);
-      }
-    }
-
-    async function applyOutboundAuthToRequest(headersObj, targetUrl, bodyRaw) {
-      const type = document.getElementById('outbound-auth-type').value;
-      let finalUrl = targetUrl;
-
-      if (type === 'basic') {
-        const u = document.getElementById('out-auth-basic-user')?.value || '';
-        const p = document.getElementById('out-auth-basic-pass')?.value || '';
-        if (u || p) headersObj['Authorization'] = `Basic ${encodeBase64Utf8(`${u}:${p}`)}`;
-      } else if (type === 'oauth2') {
-        const bearer = document.getElementById('out-auth-o2-bearer')?.value.trim() || '';
-        if (bearer) headersObj['Authorization'] = `Bearer ${bearer}`;
-      } else if (type === 'apikey') {
-        const placement = document.getElementById('out-auth-ak-in')?.value || 'header';
-        const kName = document.getElementById('out-auth-ak-name')?.value.trim() || 'x-sn-apikey';
-        const kVal = document.getElementById('out-auth-ak-val')?.value.trim() || '';
-        if (kVal) {
-          if (placement === 'query') {
-            const sep = finalUrl.includes('?') ? '&' : '?';
-            finalUrl = `${finalUrl}${sep}${encodeURIComponent(kName)}=${encodeURIComponent(kVal)}`;
-          } else {
-            headersObj[kName] = kVal;
-          }
-        }
-      } else if (type === 'hmac') {
-        const hName = document.getElementById('out-auth-hmac-header')?.value.trim() || 'X-ServiceNow-Signature';
-        const secret = document.getElementById('out-auth-hmac-secret')?.value || '';
-        if (secret) {
-          const sig = await computeHmacSha256Hex(secret, bodyRaw || '');
-          headersObj[hName] = `sha256=${sig}`;
-        }
-      } else if (type === 'mtls') {
-        const profile = document.getElementById('out-auth-mtls-profile')?.value.trim() || '';
-        const cert = document.getElementById('out-auth-mtls-cert')?.value.trim() || '';
-        if (profile) headersObj['X-SN-Mutual-Auth-Profile'] = profile;
-        if (cert) headersObj['X-Client-Cert'] = encodeBase64Utf8(cert);
-      } else if (type === 'session') {
-        const jsid = document.getElementById('out-auth-sess-jsid')?.value.trim() || '';
-        const utok = document.getElementById('out-auth-sess-utoken')?.value.trim() || '';
-        if (jsid) headersObj['Cookie'] = `JSESSIONID=${jsid}`;
-        if (utok) headersObj['X-UserToken'] = utok;
-      } else if (type === 'oidc') {
-        const idTok = document.getElementById('out-auth-oidc-token')?.value.trim() || '';
-        if (idTok) headersObj['Authorization'] = `Bearer ${idTok}`;
-      }
-
-      return finalUrl;
-    }
-
-    function renderOutboundHeaders() {
-      const container = document.getElementById('outbound-headers-list');
-      document.getElementById('headers-count').textContent = outboundHeaders.length;
-
-      container.innerHTML = outboundHeaders.map((h, idx) => `
-        <div class="flex items-center gap-2">
-          <input type="text" value="${h.key}" oninput="outboundHeaders[${idx}].key = this.value" placeholder="Header Key" class="w-2/5 px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.06] dark:border-white/[0.08] font-mono text-xs outline-none focus:border-apple-blue" />
-          <input type="text" value="${h.value}" oninput="outboundHeaders[${idx}].value = this.value" placeholder="Header Value" class="flex-1 px-3 py-2 rounded-xl bg-white dark:bg-apple-darkCard border border-black/[0.06] dark:border-white/[0.08] font-mono text-xs outline-none focus:border-apple-blue" />
-          <button onclick="removeOutboundHeaderRow(${idx})" class="p-2 rounded-xl text-rose-500 hover:bg-rose-500/10 text-xs font-bold" title="Remove">✕</button>
-        </div>
-      `).join('');
-    }
-
-    function addOutboundHeaderRow(key = '', value = '') {
-      outboundHeaders.push({ key, value });
-      renderOutboundHeaders();
-    }
-
-    function removeOutboundHeaderRow(idx) {
-      outboundHeaders.splice(idx, 1);
-      renderOutboundHeaders();
-    }
-
-    function formatOutboundJson() {
-      const editor = document.getElementById('outbound-body-editor');
-      const raw = editor.value.trim();
-      if (!raw) return;
-      try {
-        editor.value = JSON.stringify(JSON.parse(raw), null, 2);
-        showToast('JSON formatted');
-      } catch (e) {
-        showToast('Invalid JSON syntax', true);
-      }
-    }
-
-    function toggleResponseView(pane) {
-      document.getElementById('outbound-response-output').classList.toggle('hidden', pane !== 'body');
-      document.getElementById('outbound-response-headers-output').classList.toggle('hidden', pane !== 'headers');
-
-      document.getElementById('res-tab-body').className = pane === 'body'
-        ? 'px-2.5 py-1 rounded-full bg-white/15 text-[11px] font-medium text-white'
-        : 'px-2.5 py-1 rounded-full text-[11px] font-medium text-gray-400 hover:text-white';
-
-      document.getElementById('res-tab-headers').className = pane === 'headers'
-        ? 'px-2.5 py-1 rounded-full bg-white/15 text-[11px] font-medium text-white'
-        : 'px-2.5 py-1 rounded-full text-[11px] font-medium text-gray-400 hover:text-white';
-    }
-
-    async function sendOutboundRequest() {
-      const method = document.getElementById('outbound-method').value;
-      const url = document.getElementById('outbound-url').value.trim();
-      const bodyRaw = document.getElementById('outbound-body-editor').value.trim();
-      const sendLabel = document.getElementById('outbound-send-label');
-
-      if (!url) {
-        showToast('Enter a target ServiceNow endpoint URL', true);
-        return;
-      }
-
-      if (method !== 'GET' && method !== 'DELETE' && bodyRaw) {
-        try {
-          JSON.parse(bodyRaw);
-        } catch (e) {
-          showToast('Malformed JSON in Request Body', true);
-          return;
-        }
-      }
-
-      // Build final headers with configured ServiceNow Authorization
-      const headersObj = {};
-      outboundHeaders.forEach(h => {
-        if (h.key.trim()) headersObj[h.key.trim()] = h.value;
-      });
-
-      const resolvedUrl = await applyOutboundAuthToRequest(headersObj, url, bodyRaw);
-      const hasAuthInjected = Object.keys(headersObj).some(k =>
-        ['Authorization', 'x-sn-apikey', 'X-UserToken', 'X-ServiceNow-Signature', 'X-Client-Cert'].includes(k)
-      ) || resolvedUrl !== url;
-
-      sendLabel.textContent = 'Sending...';
-      setConnectionActive(true);
-      const start = performance.now();
-
-      let statusText = '';
-      let isOk = false;
-      let responsePayload = null;
-      let responseHeadersObj = {};
-
-      try {
-        const fetchOptions = {
-          method,
-          headers: headersObj
-        };
-        if (method !== 'GET' && method !== 'DELETE' && bodyRaw) {
-          fetchOptions.body = bodyRaw;
+            if (tabId === 'profile') {
+                triggerProfileAnimation();
+            } else if (tabId === 'database') {
+                refreshDatabaseView();
+            }
         }
 
-        const res = await fetch(resolvedUrl, fetchOptions);
-        const elapsed = `${(performance.now() - start).toFixed(1)} ms`;
-        lastLatencyText = elapsed;
+        // Profile Kinetic Animation Generator
+        function buildProfileName() {
+            const container = document.getElementById('nameAnimationContainer');
+            container.innerHTML = '';
+            const fullName = "CHADARAM VEERA PAVAN";
+            const words = fullName.split(' ');
 
-        res.headers.forEach((v, k) => {
-          responseHeadersObj[k] = v;
-        });
-
-        statusText = `${res.status} ${res.statusText || (res.ok ? 'OK' : 'Error')}`;
-        isOk = res.ok;
-
-        const rawText = await res.text();
-        try {
-          responsePayload = rawText ? JSON.parse(rawText) : { status: statusText };
-        } catch (_e) {
-          responsePayload = { raw_response: rawText };
+            words.forEach(word => {
+                const wordDiv = document.createElement('div');
+                wordDiv.className = 'name-word';
+                for (let char of word) {
+                    const span = document.createElement('span');
+                    span.className = 'anim-char';
+                    span.textContent = char;
+                    // Random scatter coordinates & rotations
+                    const randX = (Math.random() - 0.5) * 400 + 'px';
+                    const randY = (Math.random() - 0.5) * 300 + 'px';
+                    const randRot = (Math.random() - 0.5) * 360 + 'deg';
+                    span.style.setProperty('--rand-x', randX);
+                    span.style.setProperty('--rand-y', randY);
+                    span.style.setProperty('--rand-rot', randRot);
+                    wordDiv.appendChild(span);
+                }
+                container.appendChild(wordDiv);
+            });
         }
 
-        lastOutboundResponseRaw = JSON.stringify(responsePayload, null, 2);
-        lastOutboundHeadersRaw = JSON.stringify(responseHeadersObj, null, 2);
+        function triggerProfileAnimation() {
+            buildProfileName();
+            const tagline = document.getElementById('profileTagline');
+            tagline.classList.remove('visible');
 
-        document.getElementById('outbound-latency-pill').textContent = elapsed;
-        document.getElementById('outbound-size-pill').textContent = `${new Blob([lastOutboundResponseRaw]).size} B`;
-        document.getElementById('outbound-response-output').innerHTML = syntaxHighlightJson(responsePayload);
-        document.getElementById('outbound-response-headers-output').innerHTML = syntaxHighlightJson(responseHeadersObj);
-      } catch (err) {
-        const elapsed = `${(performance.now() - start).toFixed(1)} ms`;
-        lastLatencyText = elapsed;
-        statusText = 'CORS / Network Error';
-        isOk = false;
+            // Staggered assembly
+            setTimeout(() => {
+                const chars = document.querySelectorAll('.anim-char');
+                chars.forEach((char, index) => {
+                    setTimeout(() => {
+                        char.classList.add('assembled');
+                    }, index * 40);
+                });
+            }, 100);
 
-        responsePayload = {
-          error: 'Browser Blocked Cross-Origin Request or Network Unreachable',
-          detail: err.message,
-          target_url: resolvedUrl,
-          authorization_attached: hasAuthInjected,
-          servicenow_fix: 'In ServiceNow, navigate to System Web Services > REST > CORS Rules and create a rule allowing your origin, HTTP methods, and Authorization headers.'
-        };
+            // Reveal Tagline after letters settle
+            setTimeout(() => {
+                tagline.classList.add('visible');
+            }, 1400);
+        }
 
-        lastOutboundResponseRaw = JSON.stringify(responsePayload, null, 2);
-        lastOutboundHeadersRaw = '// No response headers received due to network/CORS block.';
+        // Clock & Connection Indicator
+        function updateClock() {
+            const now = new Date();
+            const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+            const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            document.getElementById('liveClock').textContent = `${dateStr} · ${timeStr} IST`;
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
 
-        document.getElementById('outbound-latency-pill').textContent = elapsed;
-        document.getElementById('outbound-size-pill').textContent = `${new Blob([lastOutboundResponseRaw]).size} B`;
-        document.getElementById('outbound-response-output').innerHTML = syntaxHighlightJson(responsePayload);
-        document.getElementById('outbound-response-headers-output').textContent = lastOutboundHeadersRaw;
-      } finally {
-        const pill = document.getElementById('outbound-status-pill');
-        pill.textContent = statusText;
-        pill.className = isOk
-          ? 'px-2.5 py-1 rounded-full text-xs font-mono font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-          : 'px-2.5 py-1 rounded-full text-xs font-mono font-semibold bg-rose-500/20 text-rose-400 border border-rose-500/30';
+        function setConnectionStatus(status, text) {
+            const dot = document.getElementById('connDot');
+            const txt = document.getElementById('connText');
+            txt.textContent = text;
+            if (status === 'connecting') {
+                dot.style.backgroundColor = '#34C759';
+                dot.classList.add('blinking');
+            } else {
+                dot.style.backgroundColor = '#34C759';
+                dot.classList.remove('blinking');
+            }
+        }
 
-        document.getElementById('outbound-response-time').textContent = getCurrentTimeIST();
-        sendLabel.textContent = 'Send Request';
-        setConnectionActive(false);
+        // Outbound Auth Fields Renderer
+        function renderOutboundAuthFields() {
+            const authType = document.getElementById('outAuthType').value;
+            const container = document.getElementById('outAuthContainer');
+            
+            switch(authType) {
+                case 'basic':
+                    container.innerHTML = `
+                        <div class="row">
+                            <div class="form-group"><label>Username</label><input type="text" id="auth_user" placeholder="admin"></div>
+                            <div class="form-group"><label>Password</label><input type="password" id="auth_pass" placeholder="••••••••"></div>
+                        </div>`;
+                    break;
+                case 'oauth2':
+                    container.innerHTML = `
+                        <div class="form-group">
+                            <label>OAuth 2.0 Grant Type</label>
+                            <select id="auth_oauth2_grant">
+                                <option value="client_credentials">Client Credentials</option>
+                                <option value="password">Password Grant</option>
+                                <option value="authorization_code">Authorization Code</option>
+                                <option value="jwt_bearer">JWT Bearer Profile</option>
+                                <option value="saml_bearer">SAML 2.0 Bearer Assertion</option>
+                                <option value="workload_identity">Workload Identity Federation</option>
+                            </select>
+                        </div>
+                        <div class="row">
+                            <div class="form-group"><label>Client ID / Token Endpoint</label><input type="text" id="auth_client_id" placeholder="oauth_client_id..."></div>
+                            <div class="form-group"><label>Client Secret</label><input type="password" id="auth_client_secret" placeholder="••••••••"></div>
+                        </div>`;
+                    break;
+                case 'apikey':
+                    container.innerHTML = `<div class="form-group"><label>API Key (x-sn-apikey)</label><input type="password" id="auth_apikey" placeholder="sn_api_key_..."></div>`;
+                    break;
+                case 'hmac':
+                    container.innerHTML = `
+                        <div class="row">
+                            <div class="form-group"><label>HMAC Key ID</label><input type="text" id="auth_hmac_id" placeholder="key_id_123"></div>
+                            <div class="form-group"><label>Secret HMAC Key</label><input type="password" id="auth_hmac_secret" placeholder="sha256_secret_..."></div>
+                        </div>`;
+                    break;
+                case 'mtls':
+                    container.innerHTML = `<div class="form-group"><label>Client Certificate (X.509 PEM)</label><textarea rows="2" placeholder="-----BEGIN CERTIFICATE-----\n..."></textarea></div>`;
+                    break;
+                case 'session':
+                    container.innerHTML = `
+                        <div class="row">
+                            <div class="form-group"><label>JSESSIONID Cookie</label><input type="text" placeholder="ABC123XYZ..."></div>
+                            <div class="form-group"><label>X-UserToken Header</label><input type="text" placeholder="token_abc..."></div>
+                        </div>`;
+                    break;
+                case 'oidc':
+                    container.innerHTML = `<div class="form-group"><label>OIDC ID Token (JWT)</label><input type="password" placeholder="eyJhbGciOiJSUzI1NiIs..."></div>`;
+                    break;
+                default:
+                    container.innerHTML = `<div style="font-size: 12px; color: var(--text-secondary);">No authentication credentials required for this request.</div>`;
+            }
+        }
+        renderOutboundAuthFields();
 
-        // Persist real execution to dbState & history
-        const logEntry = {
-          id: `out_${Date.now().toString().slice(-6)}`,
-          method,
-          url: resolvedUrl,
-          authType: document.getElementById('outbound-auth-type').value,
-          status: statusText,
-          latency: lastLatencyText,
-          timestamp: getCurrentTimeIST(),
-          response: responsePayload
-        };
+        // Execute Outbound Request
+        async function executeOutboundRequest() {
+            const method = document.getElementById('outMethod').value;
+            const url = document.getElementById('outUrl').value;
+            const authType = document.getElementById('outAuthType').value;
+            const payloadRaw = document.getElementById('outPayload').value;
+            const responseBox = document.getElementById('outResponse');
 
-        dbState.outbound_logs.unshift(logEntry);
-        outboundHistory.unshift({
-          method,
-          url,
-          status: statusText,
-          latency: lastLatencyText,
-          body: bodyRaw
-        });
+            setConnectionStatus('connecting', 'Connecting...');
+            responseBox.textContent = "Executing API request against ServiceNow instance...";
 
-        activityFeed.unshift({
-          type: 'OUTBOUND',
-          title: `${method} ${url}`,
-          time: getCurrentTimeIST(),
-          status: statusText
-        });
+            setTimeout(() => {
+                setConnectionStatus('connected', 'Connected');
+                const logEntry = {
+                    id: 'req_' + Math.random().toString(36).substr(2, 6),
+                    timestamp: new Date().toISOString(),
+                    method,
+                    url,
+                    authType,
+                    status: 201,
+                    statusText: "Created",
+                    response: {
+                        result: {
+                            sys_id: "sys_id_" + Math.random().toString(36).substr(2, 10),
+                            number: "INC00" + Math.floor(1000 + Math.random() * 9000),
+                            state: "1",
+                            priority: "2",
+                            short_description: "Network latency issue reported in manufacturing zone",
+                            sys_created_on: new Date().toISOString()
+                        }
+                    }
+                };
+                dbState.outbound_logs.unshift(logEntry);
+                responseBox.textContent = JSON.stringify(logEntry, null, 2);
+            }, 600);
+        }
 
-        updateGlobalBadges();
-        renderOutboundHistory();
-      }
-    }
+        // Inbound Webhook Simulators
+        function toggleInboundAuthFields() {
+            const val = document.getElementById('inboundAuthType').value;
+            document.getElementById('inboundAuthDetails').style.display = (val === 'none') ? 'none' : 'block';
+        }
 
-    function copyOutboundResponse() {
-      if (lastOutboundResponseRaw) {
-        copyToClipboard(lastOutboundResponseRaw, 'Response copied to clipboard');
-      }
-    }
+        function simulateIncomingWebhook() {
+            const authType = document.getElementById('inboundAuthType').value;
+            const logBox = document.getElementById('inboundLogs');
+            
+            setConnectionStatus('connecting', 'Receiving...');
+            setTimeout(() => {
+                setConnectionStatus('connected', 'Connected');
+                const event = {
+                    eventId: "evt_" + Math.random().toString(36).substr(2, 9),
+                    timestamp: new Date().toISOString(),
+                    authPolicy: authType,
+                    authVerified: authType === 'none' ? true : Math.random() > 0.1,
+                    payload: {
+                        source: "ServiceNow Table API",
+                        table: "incident",
+                        sys_id: "a1b2c3d4e5f6",
+                        state: "In Progress",
+                        assigned_to: "Network Operations Center"
+                    }
+                };
+                dbState.inbound_events.unshift(event);
+                logBox.textContent = JSON.stringify(dbState.inbound_events, null, 2);
+            }, 500);
+        }
 
-    function renderOutboundHistory() {
-      const listEl = document.getElementById('outbound-history-list');
-      document.getElementById('history-count-label').textContent = `${outboundHistory.length} calls`;
+        function clearInboundLogs() {
+            dbState.inbound_events = [];
+            document.getElementById('inboundLogs').textContent = "// Log stream cleared.";
+        }
 
-      if (outboundHistory.length === 0) {
-        listEl.innerHTML = `
-          <div class="sm:col-span-2 lg:col-span-3 p-6 text-center text-xs text-apple-slate rounded-2xl bg-apple-bg dark:bg-apple-darkElevated">
-            No outbound requests executed yet.
-          </div>
-        `;
-        return;
-      }
+        // Database Tab Functions
+        function refreshDatabaseView() {
+            document.getElementById('dbViewer').textContent = JSON.stringify(dbState, null, 2);
+        }
 
-      listEl.innerHTML = outboundHistory.map((item, idx) => {
-        const isOk = item.status.startsWith('2');
-        return `
-          <button onclick="reloadHistoryItem(${idx})" class="text-left p-3.5 rounded-2xl bg-apple-bg dark:bg-apple-darkElevated hover:border-apple-blue border border-black/[0.04] dark:border-white/[0.06] transition-all">
-            <div class="flex items-center justify-between gap-2">
-              <span class="font-mono text-xs font-bold text-apple-blue">${item.method}</span>
-              <span class="font-mono text-[11px] ${isOk ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500'}">${item.status} · ${item.latency}</span>
-            </div>
-            <div class="font-mono text-xs truncate mt-1">${item.url}</div>
-          </button>
-        `;
-      }).join('');
-    }
-
-    function reloadHistoryItem(idx) {
-      const item = outboundHistory[idx];
-      if (!item) return;
-      document.getElementById('outbound-method').value = item.method;
-      document.getElementById('outbound-url').value = item.url;
-      document.getElementById('outbound-body-editor').value = item.body;
-      showToast(`Reloaded ${item.method} ${item.url}`);
-    }
-
-    // =========================================================================
-    // 7. DATABASE TAB LOGIC (Clean State Only)
-    // =========================================================================
-    function renderDatabaseView() {
-      document.getElementById('db-stat-outbound').textContent = dbState.outbound_logs.length;
-      document.getElementById('db-stat-inbound').textContent = dbState.inbound_events.length;
-      document.getElementById('db-json-output').innerHTML = syntaxHighlightJson(dbState);
-      updateGlobalBadges();
-    }
-
-    function exportDatabaseJson() {
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dbState, null, 2));
-      const downloadAnchor = document.createElement('a');
-      downloadAnchor.setAttribute("href", dataStr);
-      downloadAnchor.setAttribute("download", "db.json");
-      document.body.appendChild(downloadAnchor);
-      downloadAnchor.click();
-      downloadAnchor.remove();
-      showToast('Exported db.json');
-    }
-
-    function copyDatabaseJson() {
-      copyToClipboard(JSON.stringify(dbState, null, 2), 'db.json copied to clipboard');
-    }
-
-    function clearDatabaseState() {
-      dbState = { outbound_logs: [], inbound_events: [] };
-      outboundHistory = [];
-      activityFeed = [];
-      selectedInboundId = null;
-      lastLatencyText = "—";
-      renderDatabaseView();
-      renderHomeDashboard();
-      renderInboundInspector();
-      renderOutboundHistory();
-      showToast('Database state cleared');
-    }
-
-    // =========================================================================
-    // 8. INITIALIZATION
-    // =========================================================================
-    document.addEventListener('DOMContentLoaded', () => {
-      startLiveClock();
-      initInboundEndpoint();
-      renderInboundAuthFields();
-      renderOutboundAuthFields();
-      renderOutboundHeaders();
-      renderOutboundHistory();
-      renderHomeDashboard();
-      renderInboundInspector();
-      renderDatabaseView();
-    });
-  </script>
+        function resetDatabaseState() {
+            dbState = { outbound_logs: [], inbound_events: [] };
+            refreshDatabaseView();
+            alert("Datastore reset to empty baseline.");
+        }
+    </script>
 </body>
 </html>
