@@ -154,9 +154,9 @@
             100% { opacity: 1; transform: scale(1); }
         }
 
-        /* Hero Section */
+        /* Hero Section - Clean Spacing */
         header.hero {
-            padding: 120px 20px 50px;
+            padding: 110px 20px 40px;
             text-align: center;
             max-width: 900px;
             margin: 0 auto;
@@ -272,7 +272,7 @@
                 grid-column: span 12;
             }
             header.hero {
-                padding: 100px 16px 30px;
+                padding: 95px 16px 25px;
             }
             .top-telemetry {
                 display: none;
@@ -443,10 +443,10 @@
             </a>
             <div class="nav-links">
                 <a onclick="switchTab('home')" id="nav-home" class="active">Home</a>
-                <a onclick="switchTab('profile')" id="nav-profile">Profile</a>
                 <a onclick="switchTab('inbound')" id="nav-inbound">Inbound</a>
                 <a onclick="switchTab('outbound')" id="nav-outbound">Outbound</a>
                 <a onclick="switchTab('database')" id="nav-database">Database</a>
+                <a onclick="switchTab('profile')" id="nav-profile">Profile</a>
             </div>
             <div class="top-telemetry">
                 <div class="connection-indicator" id="connIndicator">
@@ -471,7 +471,7 @@
                     <button class="btn btn-secondary" onclick="switchTab('inbound')">Open Inbound Webhooks</button>
                 </div>
             </header>
-            <div class="bento-grid" style="margin-top: 20px;">
+            <div class="bento-grid" style="margin-top: 10px;">
                 <div class="bento-card col-span-6" onclick="switchTab('profile')" style="cursor: pointer;">
                     <div class="card-header">
                         <div>
@@ -491,28 +491,9 @@
             </div>
         </div>
 
-        <!-- ================= PROFILE TAB (ANIMATED NAME) ================= -->
-        <div id="tab-profile" class="tab-content">
-            <header class="hero" style="padding-top: 60px; padding-bottom: 20px;">
-                <h1>Developer Showcase</h1>
-                <p>Interactive motion identity display</p>
-            </header>
-            <div class="bento-grid">
-                <div class="bento-card col-span-12 profile-stage">
-                    <div id="nameAnimationContainer" class="animated-name-container">
-                        <!-- Dynamically generated animated letters injected via JS -->
-                    </div>
-                    <div id="profileTagline" class="profile-tagline">ServiceNow Developer</div>
-                    <div style="margin-top: 30px;">
-                        <button class="btn btn-secondary" onclick="triggerProfileAnimation()" style="font-size: 12px; padding: 6px 16px;">Replay Animation</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <!-- ================= INBOUND TAB ================= -->
         <div id="tab-inbound" class="tab-content">
-            <header class="hero" style="padding-top: 80px; padding-bottom: 30px;">
+            <header class="hero">
                 <h1>Inbound Webhook Listener</h1>
                 <p>Configure endpoint security policies and intercept incoming payloads in real-time.</p>
             </header>
@@ -558,7 +539,7 @@
 
         <!-- ================= OUTBOUND TAB ================= -->
         <div id="tab-outbound" class="tab-content">
-            <header class="hero" style="padding-top: 80px; padding-bottom: 30px;">
+            <header class="hero">
                 <h1>Outbound API Tester</h1>
                 <p>Execute ServiceNow Table API requests with complete authorization suites.</p>
             </header>
@@ -624,7 +605,7 @@
 
         <!-- ================= DATABASE TAB ================= -->
         <div id="tab-database" class="tab-content">
-            <header class="hero" style="padding-top: 80px; padding-bottom: 30px;">
+            <header class="hero">
                 <h1>Mock Datastore (`db.json`)</h1>
                 <p>Live snapshot of recorded inbound events and outbound transaction logs.</p>
             </header>
@@ -641,6 +622,22 @@
                         </div>
                     </div>
                     <div id="dbViewer" class="response-box" style="height: 320px;">Loading database state...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= PROFILE TAB (ANIMATED NAME) ================= -->
+        <div id="tab-profile" class="tab-content">
+            <header class="hero">
+                <h1>Developer Showcase</h1>
+                <p>Interactive motion identity display</p>
+            </header>
+            <div class="bento-grid">
+                <div class="bento-card col-span-12 profile-stage">
+                    <div id="nameAnimationContainer" class="animated-name-container">
+                        <!-- Dynamically generated animated letters injected via JS -->
+                    </div>
+                    <div id="profileTagline" class="profile-tagline">ServiceNow Developer</div>
                 </div>
             </div>
         </div>
